@@ -1379,3 +1379,19 @@ export default function App() {
               </div>
               <span className="font-medium">Back to Dashboard</span>
             </button>
+<div className="p-2 rounded-full bg-teal-100">
+              <Calendar size={20} className="text-teal-700" />
+            </div>
+          </div>
+          <div className="flex-grow p-6 overflow-y-auto">
+            <MonthlySummaryView 
+              goals={goals} 
+              logs={logs} 
+              onClose={() => setShowMonthlySummary(false)} 
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

@@ -91,7 +91,7 @@ const Modal = ({ isOpen, onClose, title, children }) => {
   );
 };
 
-// Login/Signup Screen
+// Login/Signup Screen - FIXED TEXT COLORS
 const AuthScreen = ({ onAuth, error: initError }) => {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
@@ -127,7 +127,6 @@ const AuthScreen = ({ onAuth, error: initError }) => {
       } else {
         await createUserWithEmailAndPassword(onAuth, email, password);
       }
-      // Success - the onAuthStateChanged listener will handle the rest
     } catch (err) {
       console.error('Auth error:', err);
       setLoading(false);
@@ -183,14 +182,14 @@ const AuthScreen = ({ onAuth, error: initError }) => {
         )}
 
         <GlassCard className="p-8">
-          <div className="flex border-2 border-teal-200 rounded-xl p-1 mb-6">
+          <div className="flex border-2 border-teal-200 rounded-xl p-1 mb-6 bg-slate-50">
             <button
               onClick={() => {
                 setIsLogin(true);
                 setError('');
               }}
               className={`flex-1 py-2 rounded-lg font-medium transition-colors ${
-                isLogin ? 'bg-teal-600 text-white' : 'text-slate-600 hover:text-teal-700'
+                isLogin ? 'bg-teal-600 text-white' : 'text-slate-700 hover:text-teal-700'
               }`}
             >
               Sign In
@@ -201,7 +200,7 @@ const AuthScreen = ({ onAuth, error: initError }) => {
                 setError('');
               }}
               className={`flex-1 py-2 rounded-lg font-medium transition-colors ${
-                !isLogin ? 'bg-rose-600 text-white' : 'text-slate-600 hover:text-rose-700'
+                !isLogin ? 'bg-rose-600 text-white' : 'text-slate-700 hover:text-rose-700'
               }`}
             >
               Sign Up
@@ -219,7 +218,7 @@ const AuthScreen = ({ onAuth, error: initError }) => {
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 border-2 border-teal-200 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all"
+                  className="w-full pl-10 pr-4 py-3 bg-white text-slate-900 border-2 border-teal-200 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all placeholder-slate-400"
                   placeholder="you@example.com"
                   required
                   autoComplete="email"
@@ -237,7 +236,7 @@ const AuthScreen = ({ onAuth, error: initError }) => {
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 border-2 border-teal-200 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all"
+                  className="w-full pl-10 pr-4 py-3 bg-white text-slate-900 border-2 border-teal-200 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all placeholder-slate-400"
                   placeholder="••••••••"
                   required
                   autoComplete={isLogin ? "current-password" : "new-password"}
@@ -256,7 +255,7 @@ const AuthScreen = ({ onAuth, error: initError }) => {
                     type="password"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
-                    className="w-full pl-10 pr-4 py-3 border-2 border-teal-200 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all"
+                    className="w-full pl-10 pr-4 py-3 bg-white text-slate-900 border-2 border-teal-200 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all placeholder-slate-400"
                     placeholder="••••••••"
                     required
                     autoComplete="new-password"
@@ -283,7 +282,7 @@ const AuthScreen = ({ onAuth, error: initError }) => {
             </button>
           </form>
 
-          <p className="text-center text-sm text-slate-500 mt-6">
+          <p className="text-center text-sm text-slate-600 mt-6">
             {isLogin ? "Don't have an account? " : 'Already have an account? '}
             <button
               onClick={() => {
@@ -301,9 +300,7 @@ const AuthScreen = ({ onAuth, error: initError }) => {
   );
 };
 
-// Keep all other components (AnalyticsView, MonthlySummaryView, GoalCard) exactly the same as before
-// I'll include them but they're unchanged...
-
+// Analytics View
 const AnalyticsView = ({ goal, logs, onClose }) => {
   const analyticsData = useMemo(() => {
     if (!goal || !logs) return null;
@@ -450,6 +447,7 @@ const AnalyticsView = ({ goal, logs, onClose }) => {
   );
 };
 
+// Monthly Summary View
 const MonthlySummaryView = ({ goals, logs, onClose }) => {
   const summaryData = useMemo(() => {
     const now = new Date();
@@ -535,6 +533,7 @@ const MonthlySummaryView = ({ goals, logs, onClose }) => {
   );
 };
 
+// Goal Card
 const GoalCard = ({ goal, onLogClick, onAnalyzeClick, onEditClick, onDeleteClick }) => {
   const percent = Math.min(100, Math.max(0, (goal.current / goal.target) * 100));
   const dayOfYear = Math.floor((new Date() - new Date(new Date().getFullYear(), 0, 0)) / 1000 / 60 / 60 / 24);
@@ -653,7 +652,6 @@ export default function App() {
         setAuth(authInstance);
         setDb(firestore);
 
-        // Listen for auth state changes
         const unsubscribe = onAuthStateChanged(authInstance, async (currentUser) => {
           console.log('Auth state changed:', currentUser ? 'User logged in' : 'No user');
           
@@ -701,20 +699,17 @@ export default function App() {
               setLoading(false);
             }
           } else {
-            // No user logged in
             setUser(null);
             setGoals([]);
             setLogs([]);
             setLoading(false);
           }
         }, (err) => {
-          // Auth state change error
           console.error('Auth state change error:', err);
           setInitError('Failed to check authentication status. Please refresh the page.');
           setLoading(false);
         });
 
-        // Cleanup function
         return () => unsubscribe();
       } catch (err) {
         console.error('Initialization error:', err);
@@ -855,12 +850,10 @@ export default function App() {
     setEditingGoal(goal);
   };
 
-  // Show auth screen if not logged in and not loading
   if (!user && !loading) {
     return <AuthScreen onAuth={auth} error={initError} />;
   }
 
-  // Show loading screen
   if (loading) {
     return (
       <div className={`min-h-screen ${THEME.bg} flex items-center justify-center`}>
@@ -872,7 +865,6 @@ export default function App() {
     );
   }
 
-  // Main app interface
   return (
     <div className={`min-h-screen ${THEME.bg} ${THEME.textMain} font-sans pb-20`}>
       <header className={`sticky top-0 z-30 ${THEME.card} backdrop-blur-xl border-b-2 ${THEME.cardBorder} shadow-sm`}>
@@ -939,7 +931,6 @@ export default function App() {
         </div>
       </main>
 
-      {/* Modals - keeping all the same */}
       <Modal 
         isOpen={!!activeGoal} 
         onClose={() => setActiveGoal(null)} 

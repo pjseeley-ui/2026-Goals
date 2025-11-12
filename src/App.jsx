@@ -92,7 +92,7 @@ const Modal = ({ isOpen, onClose, title, children }) => {
 };
 
 // Login/Signup Screen
-const AuthScreen = ({ onAuth }) => {
+const AuthScreen = ({ onAuth, error: initError }) => {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -127,8 +127,10 @@ const AuthScreen = ({ onAuth }) => {
       } else {
         await createUserWithEmailAndPassword(onAuth, email, password);
       }
+      // Success - the onAuthStateChanged listener will handle the rest
     } catch (err) {
       console.error('Auth error:', err);
+      setLoading(false);
       switch (err.code) {
         case 'auth/invalid-email':
           setError('Invalid email address');
@@ -148,10 +150,12 @@ const AuthScreen = ({ onAuth }) => {
         case 'auth/invalid-credential':
           setError('Invalid email or password');
           break;
+        case 'auth/too-many-requests':
+          setError('Too many failed attempts. Please try again later.');
+          break;
         default:
           setError('Authentication failed. Please try again.');
       }
-      setLoading(false);
     }
   };
 
@@ -166,10 +170,25 @@ const AuthScreen = ({ onAuth }) => {
           <p className="text-slate-600">Track your goals, achieve your dreams</p>
         </div>
 
+        {initError && (
+          <div className="mb-6 bg-rose-50 border-2 border-rose-200 rounded-xl p-4">
+            <div className="flex items-start space-x-2">
+              <AlertCircle size={20} className="text-rose-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-semibold text-rose-700 mb-1">Initialization Error</p>
+                <p className="text-sm text-rose-600">{initError}</p>
+              </div>
+            </div>
+          </div>
+        )}
+
         <GlassCard className="p-8">
           <div className="flex border-2 border-teal-200 rounded-xl p-1 mb-6">
             <button
-              onClick={() => setIsLogin(true)}
+              onClick={() => {
+                setIsLogin(true);
+                setError('');
+              }}
               className={`flex-1 py-2 rounded-lg font-medium transition-colors ${
                 isLogin ? 'bg-teal-600 text-white' : 'text-slate-600 hover:text-teal-700'
               }`}
@@ -177,7 +196,10 @@ const AuthScreen = ({ onAuth }) => {
               Sign In
             </button>
             <button
-              onClick={() => setIsLogin(false)}
+              onClick={() => {
+                setIsLogin(false);
+                setError('');
+              }}
               className={`flex-1 py-2 rounded-lg font-medium transition-colors ${
                 !isLogin ? 'bg-rose-600 text-white' : 'text-slate-600 hover:text-rose-700'
               }`}
@@ -200,6 +222,7 @@ const AuthScreen = ({ onAuth }) => {
                   className="w-full pl-10 pr-4 py-3 border-2 border-teal-200 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all"
                   placeholder="you@example.com"
                   required
+                  autoComplete="email"
                 />
               </div>
             </div>
@@ -217,6 +240,7 @@ const AuthScreen = ({ onAuth }) => {
                   className="w-full pl-10 pr-4 py-3 border-2 border-teal-200 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all"
                   placeholder="••••••••"
                   required
+                  autoComplete={isLogin ? "current-password" : "new-password"}
                 />
               </div>
             </div>
@@ -235,6 +259,7 @@ const AuthScreen = ({ onAuth }) => {
                     className="w-full pl-10 pr-4 py-3 border-2 border-teal-200 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all"
                     placeholder="••••••••"
                     required
+                    autoComplete="new-password"
                   />
                 </div>
               </div>
@@ -276,7 +301,9 @@ const AuthScreen = ({ onAuth }) => {
   );
 };
 
-// Analytics View (keeping the same as before)
+// Keep all other components (AnalyticsView, MonthlySummaryView, GoalCard) exactly the same as before
+// I'll include them but they're unchanged...
+
 const AnalyticsView = ({ goal, logs, onClose }) => {
   const analyticsData = useMemo(() => {
     if (!goal || !logs) return null;
@@ -423,7 +450,6 @@ const AnalyticsView = ({ goal, logs, onClose }) => {
   );
 };
 
-// Monthly Summary View (keeping the same as before)
 const MonthlySummaryView = ({ goals, logs, onClose }) => {
   const summaryData = useMemo(() => {
     const now = new Date();
@@ -509,7 +535,6 @@ const MonthlySummaryView = ({ goals, logs, onClose }) => {
   );
 };
 
-// Goal Card (keeping the same as before)
 const GoalCard = ({ goal, onLogClick, onAnalyzeClick, onEditClick, onDeleteClick }) => {
   const percent = Math.min(100, Math.max(0, (goal.current / goal.target) * 100));
   const dayOfYear = Math.floor((new Date() - new Date(new Date().getFullYear(), 0, 0)) / 1000 / 60 / 60 / 24);
@@ -586,14 +611,14 @@ const GoalCard = ({ goal, onLogClick, onAnalyzeClick, onEditClick, onDeleteClick
   );
 };
 
-// Main App
+// Main App Component
 export default function App() {
   const [auth, setAuth] = useState(null);
   const [user, setUser] = useState(null);
   const [goals, setGoals] = useState([]);
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [initError, setInitError] = useState(null);
   const [activeGoal, setActiveGoal] = useState(null);
   const [analyzingGoal, setAnalyzingGoal] = useState(null);
   const [editingGoal, setEditingGoal] = useState(null);
@@ -615,7 +640,7 @@ export default function App() {
   useEffect(() => {
     const init = async () => {
       if (!firebaseConfig.apiKey) {
-        setError('Firebase configuration is missing. Please check your Vercel environment variables.');
+        setInitError('Firebase configuration is missing. Please check your Vercel environment variables.');
         setLoading(false);
         return;
       }
@@ -628,7 +653,10 @@ export default function App() {
         setAuth(authInstance);
         setDb(firestore);
 
-        onAuthStateChanged(authInstance, async (currentUser) => {
+        // Listen for auth state changes
+        const unsubscribe = onAuthStateChanged(authInstance, async (currentUser) => {
+          console.log('Auth state changed:', currentUser ? 'User logged in' : 'No user');
+          
           if (currentUser) {
             setUser(currentUser);
             const userId = currentUser.uid;
@@ -636,46 +664,61 @@ export default function App() {
             const goalsPath = `artifacts/${appId}/users/${userId}/goals`;
             const logsPath = `artifacts/${appId}/users/${userId}/logs`;
             
-            const unsubscribeGoals = onSnapshot(
-              query(collection(firestore, goalsPath)), 
-              (snapshot) => {
-                if (snapshot.empty) {
-                  const batch = writeBatch(firestore);
-                  INITIAL_GOALS.forEach(g => {
-                    batch.set(doc(collection(firestore, goalsPath)), g);
-                  });
-                  batch.commit().catch(err => {
-                    console.error('Error creating initial goals:', err);
-                  });
-                } else {
-                  setGoals(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+            try {
+              const unsubscribeGoals = onSnapshot(
+                query(collection(firestore, goalsPath)), 
+                (snapshot) => {
+                  if (snapshot.empty) {
+                    const batch = writeBatch(firestore);
+                    INITIAL_GOALS.forEach(g => {
+                      batch.set(doc(collection(firestore, goalsPath)), g);
+                    });
+                    batch.commit().catch(err => {
+                      console.error('Error creating initial goals:', err);
+                    });
+                  } else {
+                    setGoals(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+                  }
+                  setLoading(false);
+                },
+                (err) => {
+                  console.error('Error loading goals:', err);
+                  setLoading(false);
                 }
-                setLoading(false);
-              },
-              (err) => {
-                console.error('Error loading goals:', err);
-                setError('Failed to load goals. Please check your internet connection.');
-                setLoading(false);
-              }
-            );
-            
-            const unsubscribeLogs = onSnapshot(
-              query(collection(firestore, logsPath)), 
-              (snapshot) => {
-                setLogs(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
-              },
-              (err) => {
-                console.error('Error loading logs:', err);
-              }
-            );
+              );
+              
+              const unsubscribeLogs = onSnapshot(
+                query(collection(firestore, logsPath)), 
+                (snapshot) => {
+                  setLogs(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+                },
+                (err) => {
+                  console.error('Error loading logs:', err);
+                }
+              );
+            } catch (err) {
+              console.error('Error setting up listeners:', err);
+              setLoading(false);
+            }
           } else {
+            // No user logged in
             setUser(null);
+            setGoals([]);
+            setLogs([]);
             setLoading(false);
           }
+        }, (err) => {
+          // Auth state change error
+          console.error('Auth state change error:', err);
+          setInitError('Failed to check authentication status. Please refresh the page.');
+          setLoading(false);
         });
+
+        // Cleanup function
+        return () => unsubscribe();
       } catch (err) {
-        console.error('Initialisation error:', err);
-        setError('Failed to initialise app. Please check your configuration.');
+        console.error('Initialization error:', err);
+        setInitError('Failed to initialize the app. Please check your internet connection and refresh.');
         setLoading(false);
       }
     };
@@ -812,11 +855,12 @@ export default function App() {
     setEditingGoal(goal);
   };
 
-  // Show auth screen if not logged in
+  // Show auth screen if not logged in and not loading
   if (!user && !loading) {
-    return <AuthScreen onAuth={auth} />;
+    return <AuthScreen onAuth={auth} error={initError} />;
   }
 
+  // Show loading screen
   if (loading) {
     return (
       <div className={`min-h-screen ${THEME.bg} flex items-center justify-center`}>
@@ -828,26 +872,7 @@ export default function App() {
     );
   }
 
-  if (error) {
-    return (
-      <div className={`min-h-screen ${THEME.bg} flex items-center justify-center p-6`}>
-        <div className={`max-w-md w-full ${THEME.card} border-2 border-rose-300 rounded-2xl p-8 text-center`}>
-          <div className="w-16 h-16 bg-rose-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <AlertCircle size={32} className="text-rose-600" />
-          </div>
-          <h2 className={`text-xl font-bold ${THEME.textMain} mb-2`}>Something went wrong</h2>
-          <p className={`${THEME.textMuted} mb-6`}>{error}</p>
-          <button 
-            onClick={() => window.location.reload()} 
-            className={`px-6 py-3 ${THEME.primary} text-white rounded-xl transition-colors`}
-          >
-            Refresh Page
-          </button>
-        </div>
-      </div>
-    );
-  }
-
+  // Main app interface
   return (
     <div className={`min-h-screen ${THEME.bg} ${THEME.textMain} font-sans pb-20`}>
       <header className={`sticky top-0 z-30 ${THEME.card} backdrop-blur-xl border-b-2 ${THEME.cardBorder} shadow-sm`}>
@@ -858,7 +883,7 @@ export default function App() {
             </div>
             <div>
               <h1 className={`text-lg font-bold ${THEME.textMain} tracking-tight`}>2026 Tracker</h1>
-              <p className={`text-xs ${THEME.textMuted}`}>{user.email}</p>
+              <p className={`text-xs ${THEME.textMuted}`}>{user?.email || 'Pro Dashboard'}</p>
             </div>
           </div>
           <div className="flex space-x-2">
@@ -914,7 +939,7 @@ export default function App() {
         </div>
       </main>
 
-      {/* All the modals remain the same as before */}
+      {/* Modals - keeping all the same */}
       <Modal 
         isOpen={!!activeGoal} 
         onClose={() => setActiveGoal(null)} 

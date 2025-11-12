@@ -7,18 +7,23 @@ import {
   Activity, Calendar, AlertCircle, CheckCircle2, 
   Target, Plus, X, BarChart2, ChevronRight, Sparkles,
   Zap, Trophy, TrendingUp, Book, DollarSign, Clock,
-  Edit2, Trash2, Award, Flame, CheckSquare, TrendingDown
+  Edit2, Trash2, Award, Flame, CheckSquare, TrendingDown,
+  LogOut, Mail, Lock, User
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { 
-  getAuth, signInAnonymously, onAuthStateChanged 
+  getAuth, 
+  signInWithEmailAndPassword, 
+  createUserWithEmailAndPassword,
+  signOut as firebaseSignOut,
+  onAuthStateChanged 
 } from 'firebase/auth';
 import { 
   getFirestore, collection, doc, onSnapshot, updateDoc, addDoc, 
   writeBatch, query, Timestamp, increment, deleteDoc, setDoc
 } from 'firebase/firestore';
 
-// Firebase configuration will be loaded from Vercel environment variables
+// Firebase configuration
 const firebaseConfig = JSON.parse(import.meta.env.VITE_FIREBASE_CONFIG || '{}');
 const appId = import.meta.env.VITE_APP_ID || 'default-app';
 
@@ -86,7 +91,192 @@ const Modal = ({ isOpen, onClose, title, children }) => {
   );
 };
 
-// Analytics View
+// Login/Signup Screen
+const AuthScreen = ({ onAuth }) => {
+  const [isLogin, setIsLogin] = useState(true);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    
+    if (!email || !password) {
+      setError('Please enter both email and password');
+      return;
+    }
+
+    if (!isLogin && password !== confirmPassword) {
+      setError('Passwords do not match');
+      return;
+    }
+
+    if (!isLogin && password.length < 6) {
+      setError('Password must be at least 6 characters');
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      if (isLogin) {
+        await signInWithEmailAndPassword(onAuth, email, password);
+      } else {
+        await createUserWithEmailAndPassword(onAuth, email, password);
+      }
+    } catch (err) {
+      console.error('Auth error:', err);
+      switch (err.code) {
+        case 'auth/invalid-email':
+          setError('Invalid email address');
+          break;
+        case 'auth/user-not-found':
+          setError('No account found with this email');
+          break;
+        case 'auth/wrong-password':
+          setError('Incorrect password');
+          break;
+        case 'auth/email-already-in-use':
+          setError('An account with this email already exists');
+          break;
+        case 'auth/weak-password':
+          setError('Password is too weak');
+          break;
+        case 'auth/invalid-credential':
+          setError('Invalid email or password');
+          break;
+        default:
+          setError('Authentication failed. Please try again.');
+      }
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className={`min-h-screen ${THEME.bg} flex items-center justify-center p-6`}>
+      <div className="max-w-md w-full">
+        <div className="text-center mb-8">
+          <div className="inline-block bg-gradient-to-br from-teal-500 to-cyan-600 p-4 rounded-2xl shadow-lg mb-4">
+            <Sparkles size={40} className="text-white" />
+          </div>
+          <h1 className="text-3xl font-bold text-slate-900 mb-2">2026 Tracker</h1>
+          <p className="text-slate-600">Track your goals, achieve your dreams</p>
+        </div>
+
+        <GlassCard className="p-8">
+          <div className="flex border-2 border-teal-200 rounded-xl p-1 mb-6">
+            <button
+              onClick={() => setIsLogin(true)}
+              className={`flex-1 py-2 rounded-lg font-medium transition-colors ${
+                isLogin ? 'bg-teal-600 text-white' : 'text-slate-600 hover:text-teal-700'
+              }`}
+            >
+              Sign In
+            </button>
+            <button
+              onClick={() => setIsLogin(false)}
+              className={`flex-1 py-2 rounded-lg font-medium transition-colors ${
+                !isLogin ? 'bg-rose-600 text-white' : 'text-slate-600 hover:text-rose-700'
+              }`}
+            >
+              Sign Up
+            </button>
+          </div>
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                Email Address
+              </label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full pl-10 pr-4 py-3 border-2 border-teal-200 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all"
+                  placeholder="you@example.com"
+                  required
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                Password
+              </label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full pl-10 pr-4 py-3 border-2 border-teal-200 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all"
+                  placeholder="••••••••"
+                  required
+                />
+              </div>
+            </div>
+
+            {!isLogin && (
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Confirm Password
+                </label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+                  <input
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    className="w-full pl-10 pr-4 py-3 border-2 border-teal-200 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all"
+                    placeholder="••••••••"
+                    required
+                  />
+                </div>
+              </div>
+            )}
+
+            {error && (
+              <div className="bg-rose-50 border-2 border-rose-200 rounded-xl p-3 flex items-start space-x-2">
+                <AlertCircle size={20} className="text-rose-600 flex-shrink-0 mt-0.5" />
+                <p className="text-sm text-rose-700">{error}</p>
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={loading}
+              className={`w-full py-3 rounded-xl font-semibold text-white transition-all ${
+                isLogin ? 'bg-teal-600 hover:bg-teal-700' : 'bg-rose-600 hover:bg-rose-700'
+              } disabled:opacity-50 disabled:cursor-not-allowed shadow-lg`}
+            >
+              {loading ? 'Please wait...' : isLogin ? 'Sign In' : 'Create Account'}
+            </button>
+          </form>
+
+          <p className="text-center text-sm text-slate-500 mt-6">
+            {isLogin ? "Don't have an account? " : 'Already have an account? '}
+            <button
+              onClick={() => {
+                setIsLogin(!isLogin);
+                setError('');
+              }}
+              className={`font-semibold ${isLogin ? 'text-rose-600 hover:text-rose-700' : 'text-teal-600 hover:text-teal-700'}`}
+            >
+              {isLogin ? 'Sign up' : 'Sign in'}
+            </button>
+          </p>
+        </GlassCard>
+      </div>
+    </div>
+  );
+};
+
+// Analytics View (keeping the same as before)
 const AnalyticsView = ({ goal, logs, onClose }) => {
   const analyticsData = useMemo(() => {
     if (!goal || !logs) return null;
@@ -233,7 +423,7 @@ const AnalyticsView = ({ goal, logs, onClose }) => {
   );
 };
 
-// Monthly Summary View
+// Monthly Summary View (keeping the same as before)
 const MonthlySummaryView = ({ goals, logs, onClose }) => {
   const summaryData = useMemo(() => {
     const now = new Date();
@@ -319,7 +509,7 @@ const MonthlySummaryView = ({ goals, logs, onClose }) => {
   );
 };
 
-// Goal Card
+// Goal Card (keeping the same as before)
 const GoalCard = ({ goal, onLogClick, onAnalyzeClick, onEditClick, onDeleteClick }) => {
   const percent = Math.min(100, Math.max(0, (goal.current / goal.target) * 100));
   const dayOfYear = Math.floor((new Date() - new Date(new Date().getFullYear(), 0, 0)) / 1000 / 60 / 60 / 24);
@@ -398,6 +588,7 @@ const GoalCard = ({ goal, onLogClick, onAnalyzeClick, onEditClick, onDeleteClick
 
 // Main App
 export default function App() {
+  const [auth, setAuth] = useState(null);
   const [user, setUser] = useState(null);
   const [goals, setGoals] = useState([]);
   const [logs, setLogs] = useState([]);
@@ -431,11 +622,13 @@ export default function App() {
 
       try {
         const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
+        const authInstance = getAuth(app);
         const firestore = getFirestore(app);
+        
+        setAuth(authInstance);
         setDb(firestore);
 
-        onAuthStateChanged(auth, async (currentUser) => {
+        onAuthStateChanged(authInstance, async (currentUser) => {
           if (currentUser) {
             setUser(currentUser);
             const userId = currentUser.uid;
@@ -446,14 +639,13 @@ export default function App() {
             const unsubscribeGoals = onSnapshot(
               query(collection(firestore, goalsPath)), 
               (snapshot) => {
-                if (snapshot.empty && goals.length === 0) {
+                if (snapshot.empty) {
                   const batch = writeBatch(firestore);
                   INITIAL_GOALS.forEach(g => {
                     batch.set(doc(collection(firestore, goalsPath)), g);
                   });
                   batch.commit().catch(err => {
                     console.error('Error creating initial goals:', err);
-                    setError('Failed to create initial goals. Please refresh the page.');
                   });
                 } else {
                   setGoals(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
@@ -476,15 +668,9 @@ export default function App() {
                 console.error('Error loading logs:', err);
               }
             );
-            
           } else {
-            try {
-              await signInAnonymously(auth);
-            } catch (err) {
-              console.error('Error signing in:', err);
-              setError('Failed to sign in. Please refresh the page.');
-              setLoading(false);
-            }
+            setUser(null);
+            setLoading(false);
           }
         });
       } catch (err) {
@@ -496,6 +682,17 @@ export default function App() {
     
     init();
   }, []);
+
+  const handleSignOut = async () => {
+    try {
+      await firebaseSignOut(auth);
+      setGoals([]);
+      setLogs([]);
+    } catch (err) {
+      console.error('Sign out error:', err);
+      alert('Failed to sign out. Please try again.');
+    }
+  };
 
   const handleLogSubmit = async (e) => {
     e.preventDefault();
@@ -517,7 +714,6 @@ export default function App() {
         timestamp: Timestamp.now()
       });
       
-      // Update streak if tracking
       let streakUpdate = {};
       if (activeGoal.trackStreak) {
         const today = new Date().toDateString();
@@ -616,6 +812,11 @@ export default function App() {
     setEditingGoal(goal);
   };
 
+  // Show auth screen if not logged in
+  if (!user && !loading) {
+    return <AuthScreen onAuth={auth} />;
+  }
+
   if (loading) {
     return (
       <div className={`min-h-screen ${THEME.bg} flex items-center justify-center`}>
@@ -657,21 +858,30 @@ export default function App() {
             </div>
             <div>
               <h1 className={`text-lg font-bold ${THEME.textMain} tracking-tight`}>2026 Tracker</h1>
-              <p className={`text-xs ${THEME.textMuted}`}>Pro Dashboard</p>
+              <p className={`text-xs ${THEME.textMuted}`}>{user.email}</p>
             </div>
           </div>
           <div className="flex space-x-2">
             <button 
               onClick={() => setShowMonthlySummary(true)} 
               className={`p-3 ${THEME.secondary} text-white rounded-xl transition-colors hover:shadow-lg`}
+              title="Monthly Summary"
             >
               <Calendar size={20} />
             </button>
             <button 
               onClick={() => setIsAddingGoal(true)} 
               className={`p-3 ${THEME.primary} text-white rounded-xl transition-colors hover:shadow-lg`}
+              title="Add Goal"
             >
               <Plus size={20} />
+            </button>
+            <button 
+              onClick={handleSignOut} 
+              className="p-3 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl transition-colors"
+              title="Sign Out"
+            >
+              <LogOut size={20} />
             </button>
           </div>
         </div>
@@ -704,7 +914,7 @@ export default function App() {
         </div>
       </main>
 
-      {/* Log Progress Modal */}
+      {/* All the modals remain the same as before */}
       <Modal 
         isOpen={!!activeGoal} 
         onClose={() => setActiveGoal(null)} 
@@ -755,7 +965,6 @@ export default function App() {
         </form>
       </Modal>
 
-      {/* Add/Edit Goal Modal */}
       <Modal 
         isOpen={isAddingGoal || !!editingGoal} 
         onClose={() => { setIsAddingGoal(false); setEditingGoal(null); setGoalForm({ name: '', type: 'cumulative', target: '', unit: '', trackStreak: false, dueDate: '' }); }} 
@@ -857,7 +1066,6 @@ export default function App() {
         </form>
       </Modal>
 
-      {/* Delete Confirmation Modal */}
       <Modal
         isOpen={!!deletingGoal}
         onClose={() => setDeletingGoal(null)}
@@ -890,7 +1098,6 @@ export default function App() {
         </div>
       </Modal>
 
-      {/* Analytics View */}
       {analyzingGoal && (
         <div className={`fixed inset-0 ${THEME.bg} z-50 flex flex-col animate-in slide-in-from-right duration-300`}>
           <div className={`flex items-center justify-between px-6 py-4 border-b-2 ${THEME.cardBorder} ${THEME.card} backdrop-blur-md`}>
@@ -919,7 +1126,6 @@ export default function App() {
         </div>
       )}
 
-      {/* Monthly Summary View */}
       {showMonthlySummary && (
         <div className={`fixed inset-0 ${THEME.bg} z-50 flex flex-col animate-in slide-in-from-right duration-300`}>
           <div className={`flex items-center justify-between px-6 py-4 border-b-2 ${THEME.cardBorder} ${THEME.card} backdrop-blur-md`}>

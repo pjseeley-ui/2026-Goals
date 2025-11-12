@@ -52,14 +52,18 @@ const INITIAL_GOALS = [
   { name: 'Running', type: 'cumulative', target: 1000, current: 0, unit: 'km', trackStreak: true, streak: 0 },
   { name: 'Reading', type: 'cumulative', target: 24, current: 0, unit: 'books', trackStreak: false, streak: 0 },
   { name: 'Savings', type: 'cumulative', target: 20000, current: 0, unit: '£', trackStreak: false, streak: 0 },
+  { name: '5K Personal Best', type: 'personal-best', target: 18, current: 25, unit: 'minutes', trackStreak: false, streak: 0, bestValue: null, bestDate: null, higherIsBetter: false },
 ];
 
-// Goal type options
+// Goal type options - EXPANDED
 const GOAL_TYPES = [
-  { value: 'cumulative', label: 'Cumulative', description: 'Add up progress over time (e.g., distance, money)' },
+  { value: 'cumulative', label: 'Cumulative', description: 'Add up progress over time (e.g., total distance, savings)' },
+  { value: 'personal-best', label: 'Personal Best', description: 'Track your best single performance (e.g., fastest time, highest score)' },
+  { value: 'countdown', label: 'Countdown', description: 'Count down to zero (e.g., weight loss, debt payoff)' },
   { value: 'habit', label: 'Daily Habit', description: 'Track yes/no completion each day' },
   { value: 'target', label: 'Target Date', description: 'Complete by a specific date' },
   { value: 'average', label: 'Average', description: 'Maintain an average per week/month' },
+  { value: 'maintain', label: 'Maintain Range', description: 'Keep within min/max bounds (e.g., weight, budget)' },
 ];
 
 // Components
@@ -91,7 +95,7 @@ const Modal = ({ isOpen, onClose, title, children }) => {
   );
 };
 
-// Login/Signup Screen - FIXED TEXT COLORS
+// Login/Signup Screen
 const AuthScreen = ({ onAuth, error: initError }) => {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
@@ -494,7 +498,7 @@ const MonthlySummaryView = ({ goals, logs, onClose }) => {
             <div className="flex justify-between items-start mb-4">
               <div>
                 <h3 className={`text-lg font-bold ${THEME.textMain}`}>{goal.name}</h3>
-                <p className={`text-sm ${THEME.textMuted}`}>{goal.type}</p>
+                <p className={`text-sm ${THEME.textMuted} capitalize`}>{goal.type.replace('-', ' ')}</p>
               </div>
               <div className={`px-3 py-1 rounded-full text-xs font-bold ${
                 goal.percentOfTarget >= 100 ? 'bg-teal-100 text-teal-700' :
@@ -533,12 +537,96 @@ const MonthlySummaryView = ({ goals, logs, onClose }) => {
   );
 };
 
-// Goal Card
+// Goal Card - WITH NEW GOAL TYPE LOGIC
 const GoalCard = ({ goal, onLogClick, onAnalyzeClick, onEditClick, onDeleteClick }) => {
-  const percent = Math.min(100, Math.max(0, (goal.current / goal.target) * 100));
-  const dayOfYear = Math.floor((new Date() - new Date(new Date().getFullYear(), 0, 0)) / 1000 / 60 / 60 / 24);
-  const expectedPercent = (dayOfYear / 365) * 100;
-  const isAhead = percent >= expectedPercent;
+  // Calculate progress based on goal type
+  const getProgressData = () => {
+    switch (goal.type) {
+      case 'cumulative':
+      case 'habit':
+      case 'average':
+      case 'target': {
+        const percent = Math.min(100, Math.max(0, (goal.current / goal.target) * 100));
+        const dayOfYear = Math.floor((new Date() - new Date(new Date().getFullYear(), 0, 0)) / 1000 / 60 / 60 / 24);
+        const expectedPercent = (dayOfYear / 365) * 100;
+        const isAhead = percent >= expectedPercent;
+        return { percent, isAhead, display: `${goal.current.toLocaleString()} / ${goal.target.toLocaleString()} ${goal.unit}` };
+      }
+      
+      case 'personal-best': {
+        const higherIsBetter = goal.higherIsBetter !== false; // default to true
+        const hasBest = goal.bestValue !== null && goal.bestValue !== undefined;
+        let percent = 0;
+        let isAhead = false;
+        
+        if (hasBest) {
+          if (higherIsBetter) {
+            percent = Math.min(100, Math.max(0, (goal.bestValue / goal.target) * 100));
+            isAhead = goal.bestValue >= goal.target;
+          } else {
+            // Lower is better (e.g., golf score, race time)
+            const range = goal.current - goal.target;
+            if (range > 0) {
+              percent = Math.min(100, Math.max(0, ((goal.current - goal.bestValue) / range) * 100));
+            }
+            isAhead = goal.bestValue <= goal.target;
+          }
+        }
+        
+        const bestDisplay = hasBest 
+          ? `Best: ${goal.bestValue} ${goal.unit}` 
+          : `No PB yet (Target: ${goal.target} ${goal.unit})`;
+        
+        return { percent, isAhead, display: bestDisplay };
+      }
+      
+      case 'countdown': {
+        const remaining = goal.target - goal.current;
+        const percent = Math.min(100, Math.max(0, (goal.current / goal.target) * 100));
+        const isAhead = remaining <= 0;
+        return { 
+          percent, 
+          isAhead, 
+          display: isAhead 
+            ? `Complete! 🎉` 
+            : `${remaining.toLocaleString()} ${goal.unit} remaining`
+        };
+      }
+      
+      case 'maintain': {
+        const minValue = goal.minValue || 0;
+        const maxValue = goal.maxValue || goal.target;
+        const inRange = goal.current >= minValue && goal.current <= maxValue;
+        const percent = inRange ? 100 : 50;
+        return { 
+          percent, 
+          isAhead: inRange, 
+          display: `${goal.current} ${goal.unit} (${minValue}-${maxValue})`
+        };
+      }
+      
+      default:
+        return { percent: 0, isAhead: false, display: `${goal.current} ${goal.unit}` };
+    }
+  };
+
+  const { percent, isAhead, display } = getProgressData();
+  
+  // Get type-specific badge
+  const getTypeBadge = () => {
+    switch (goal.type) {
+      case 'personal-best':
+        return <Trophy size={12} />;
+      case 'countdown':
+        return <TrendingDown size={12} />;
+      case 'maintain':
+        return <Target size={12} />;
+      case 'habit':
+        return <CheckSquare size={12} />;
+      default:
+        return <TrendingUp size={12} />;
+    }
+  };
   
   return (
     <GlassCard className="p-6 flex flex-col justify-between h-full group">
@@ -550,7 +638,7 @@ const GoalCard = ({ goal, onLogClick, onAnalyzeClick, onEditClick, onDeleteClick
             </h3>
             {isAhead && (
               <div className="bg-teal-100 text-teal-700 p-1 rounded-full">
-                <TrendingUp size={12} />
+                {getTypeBadge()}
               </div>
             )}
             {goal.trackStreak && goal.streak > 0 && (
@@ -561,11 +649,16 @@ const GoalCard = ({ goal, onLogClick, onAnalyzeClick, onEditClick, onDeleteClick
             )}
           </div>
           <p className={`text-sm ${THEME.textMuted} mb-1`}>
-            <span className={`${THEME.textMain} font-semibold`}>{goal.current.toLocaleString()}</span>
-            <span className="mx-1 text-slate-400">/</span>
-            {goal.target.toLocaleString()} {goal.unit}
+            {display}
           </p>
-          <p className="text-xs text-slate-500 capitalize">{goal.type}</p>
+          <div className="flex items-center space-x-2">
+            <p className="text-xs text-slate-500 capitalize">{goal.type.replace('-', ' ')}</p>
+            {goal.type === 'personal-best' && goal.bestDate && (
+              <p className="text-xs text-teal-600">
+                • {new Date(goal.bestDate).toLocaleDateString('en-GB')}
+              </p>
+            )}
+          </div>
         </div>
         <div className="flex space-x-1">
           <button 
@@ -632,7 +725,10 @@ export default function App() {
     target: '',
     unit: '',
     trackStreak: false,
-    dueDate: ''
+    dueDate: '',
+    higherIsBetter: true,
+    minValue: '',
+    maxValue: ''
   });
   const [db, setDb] = useState(null);
 
@@ -732,6 +828,7 @@ export default function App() {
     }
   };
 
+  // UPDATED LOG SUBMIT - Handles all goal types including Personal Best
   const handleLogSubmit = async (e) => {
     e.preventDefault();
     if (!user || !activeGoal || !logValue) return;
@@ -745,6 +842,7 @@ export default function App() {
     const userId = user.uid;
     
     try {
+      // Add log entry
       await addDoc(collection(db, `artifacts/${appId}/users/${userId}/logs`), {
         goalId: activeGoal.id,
         value: val,
@@ -752,7 +850,43 @@ export default function App() {
         timestamp: Timestamp.now()
       });
       
-      let streakUpdate = {};
+      // Handle different goal types
+      let updateData = {};
+      
+      switch (activeGoal.type) {
+        case 'personal-best': {
+          const higherIsBetter = activeGoal.higherIsBetter !== false;
+          const currentBest = activeGoal.bestValue;
+          const isNewBest = currentBest === null || currentBest === undefined ||
+            (higherIsBetter ? val > currentBest : val < currentBest);
+          
+          if (isNewBest) {
+            updateData = {
+              bestValue: val,
+              bestDate: new Date().toISOString(),
+              current: val
+            };
+          }
+          break;
+        }
+        
+        case 'countdown': {
+          updateData = { current: increment(val) };
+          break;
+        }
+        
+        case 'maintain': {
+          updateData = { current: val };
+          break;
+        }
+        
+        default: {
+          // Cumulative, habit, average, target
+          updateData = { current: increment(val) };
+        }
+      }
+      
+      // Handle streak tracking
       if (activeGoal.trackStreak) {
         const today = new Date().toDateString();
         const lastLog = logs
@@ -764,19 +898,16 @@ export default function App() {
           const yesterday = new Date(Date.now() - 86400000).toDateString();
           
           if (lastLogDate === yesterday) {
-            streakUpdate = { streak: (activeGoal.streak || 0) + 1 };
+            updateData.streak = (activeGoal.streak || 0) + 1;
           } else if (lastLogDate !== today) {
-            streakUpdate = { streak: 1 };
+            updateData.streak = 1;
           }
         } else {
-          streakUpdate = { streak: 1 };
+          updateData.streak = 1;
         }
       }
       
-      await updateDoc(doc(db, `artifacts/${appId}/users/${userId}/goals`, activeGoal.id), {
-        current: increment(val),
-        ...streakUpdate
-      });
+      await updateDoc(doc(db, `artifacts/${appId}/users/${userId}/goals`, activeGoal.id), updateData);
       
       setLogValue('');
       setLogNote('');
@@ -805,6 +936,15 @@ export default function App() {
       unit: goalForm.unit || 'units',
       trackStreak: goalForm.trackStreak,
       ...(goalForm.type === 'target' && goalForm.dueDate ? { dueDate: goalForm.dueDate } : {}),
+      ...(goalForm.type === 'personal-best' ? { 
+        higherIsBetter: goalForm.higherIsBetter,
+        bestValue: editingGoal ? editingGoal.bestValue : null,
+        bestDate: editingGoal ? editingGoal.bestDate : null
+      } : {}),
+      ...(goalForm.type === 'maintain' ? {
+        minValue: parseFloat(goalForm.minValue) || 0,
+        maxValue: parseFloat(goalForm.maxValue) || target
+      } : {}),
       ...(editingGoal ? {} : { current: 0, streak: 0 })
     };
     
@@ -815,7 +955,17 @@ export default function App() {
         await addDoc(collection(db, `artifacts/${appId}/users/${userId}/goals`), goalData);
       }
       
-      setGoalForm({ name: '', type: 'cumulative', target: '', unit: '', trackStreak: false, dueDate: '' });
+      setGoalForm({ 
+        name: '', 
+        type: 'cumulative', 
+        target: '', 
+        unit: '', 
+        trackStreak: false, 
+        dueDate: '',
+        higherIsBetter: true,
+        minValue: '',
+        maxValue: ''
+      });
       setIsAddingGoal(false);
       setEditingGoal(null);
     } catch (err) {
@@ -845,7 +995,10 @@ export default function App() {
       target: goal.target.toString(),
       unit: goal.unit,
       trackStreak: goal.trackStreak || false,
-      dueDate: goal.dueDate || ''
+      dueDate: goal.dueDate || '',
+      higherIsBetter: goal.higherIsBetter !== false,
+      minValue: goal.minValue?.toString() || '',
+      maxValue: goal.maxValue?.toString() || ''
     });
     setEditingGoal(goal);
   };
@@ -931,6 +1084,7 @@ export default function App() {
         </div>
       </main>
 
+      {/* Log Progress Modal */}
       <Modal 
         isOpen={!!activeGoal} 
         onClose={() => setActiveGoal(null)} 
@@ -956,6 +1110,13 @@ export default function App() {
                 {activeGoal?.unit}
               </span>
             </div>
+            {activeGoal?.type === 'personal-best' && (
+              <p className="text-xs text-slate-500 mt-2">
+                {activeGoal.higherIsBetter !== false 
+                  ? 'Enter a higher value to set a new personal best' 
+                  : 'Enter a lower value to set a new personal best'}
+              </p>
+            )}
           </div>
           
           <div className="mb-6">
@@ -981,9 +1142,24 @@ export default function App() {
         </form>
       </Modal>
 
+      {/* Add/Edit Goal Modal - UPDATED WITH NEW FIELDS */}
       <Modal 
         isOpen={isAddingGoal || !!editingGoal} 
-        onClose={() => { setIsAddingGoal(false); setEditingGoal(null); setGoalForm({ name: '', type: 'cumulative', target: '', unit: '', trackStreak: false, dueDate: '' }); }} 
+        onClose={() => { 
+          setIsAddingGoal(false); 
+          setEditingGoal(null); 
+          setGoalForm({ 
+            name: '', 
+            type: 'cumulative', 
+            target: '', 
+            unit: '', 
+            trackStreak: false, 
+            dueDate: '',
+            higherIsBetter: true,
+            minValue: '',
+            maxValue: ''
+          }); 
+        }} 
         title={editingGoal ? "Edit Goal" : "New Goal"}
       >
         <form onSubmit={handleAddOrEditGoal} className="space-y-5">
@@ -1060,6 +1236,52 @@ export default function App() {
             </div>
           )}
           
+          {goalForm.type === 'personal-best' && (
+            <div className="flex items-center space-x-3">
+              <input 
+                type="checkbox"
+                id="higherIsBetter"
+                className="w-5 h-5 text-teal-600 border-2 border-teal-300 rounded focus:ring-teal-500"
+                checked={goalForm.higherIsBetter}
+                onChange={e => setGoalForm({...goalForm, higherIsBetter: e.target.checked})}
+              />
+              <label htmlFor="higherIsBetter" className={`text-sm font-medium ${THEME.textMain} cursor-pointer`}>
+                Higher is better (uncheck for golf/time goals where lower is better)
+              </label>
+            </div>
+          )}
+          
+          {goalForm.type === 'maintain' && (
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className={`block text-xs font-bold ${THEME.textMuted} uppercase mb-2`}>
+                  Min Value
+                </label>
+                <input 
+                  type="number" 
+                  step="any"
+                  className={`w-full ${THEME.card} border-2 ${THEME.cardBorder} rounded-xl p-4 ${THEME.textMain} focus:ring-2 focus:ring-teal-500 outline-none`}
+                  placeholder="70" 
+                  value={goalForm.minValue} 
+                  onChange={e => setGoalForm({...goalForm, minValue: e.target.value})} 
+                />
+              </div>
+              <div>
+                <label className={`block text-xs font-bold ${THEME.textMuted} uppercase mb-2`}>
+                  Max Value
+                </label>
+                <input 
+                  type="number" 
+                  step="any"
+                  className={`w-full ${THEME.card} border-2 ${THEME.cardBorder} rounded-xl p-4 ${THEME.textMain} focus:ring-2 focus:ring-teal-500 outline-none`}
+                  placeholder="75" 
+                  value={goalForm.maxValue} 
+                  onChange={e => setGoalForm({...goalForm, maxValue: e.target.value})} 
+                />
+              </div>
+            </div>
+          )}
+          
           <div className="flex items-center space-x-3">
             <input 
               type="checkbox"
@@ -1082,6 +1304,7 @@ export default function App() {
         </form>
       </Modal>
 
+      {/* Delete Confirmation Modal */}
       <Modal
         isOpen={!!deletingGoal}
         onClose={() => setDeletingGoal(null)}
@@ -1114,6 +1337,7 @@ export default function App() {
         </div>
       </Modal>
 
+      {/* Analytics View */}
       {analyzingGoal && (
         <div className={`fixed inset-0 ${THEME.bg} z-50 flex flex-col animate-in slide-in-from-right duration-300`}>
           <div className={`flex items-center justify-between px-6 py-4 border-b-2 ${THEME.cardBorder} ${THEME.card} backdrop-blur-md`}>
@@ -1142,6 +1366,7 @@ export default function App() {
         </div>
       )}
 
+      {/* Monthly Summary View */}
       {showMonthlySummary && (
         <div className={`fixed inset-0 ${THEME.bg} z-50 flex flex-col animate-in slide-in-from-right duration-300`}>
           <div className={`flex items-center justify-between px-6 py-4 border-b-2 ${THEME.cardBorder} ${THEME.card} backdrop-blur-md`}>
@@ -1154,19 +1379,3 @@ export default function App() {
               </div>
               <span className="font-medium">Back to Dashboard</span>
             </button>
-            <div className="p-2 rounded-full bg-teal-100">
-              <Calendar size={20} className="text-teal-700" />
-            </div>
-          </div>
-          <div className="flex-grow p-6 overflow-y-auto">
-            <MonthlySummaryView 
-              goals={goals} 
-              logs={logs} 
-              onClose={() => setShowMonthlySummary(false)} 
-            />
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}

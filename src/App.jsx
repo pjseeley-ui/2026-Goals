@@ -2761,4 +2761,38 @@ export default function App() {
             <AnalyticsView 
               goal={analyzingGoal} 
               logs={logs} 
-              onClose={() => setAnalyzingGoal(null)}
+              onClose={() => setAnalyzingGoal(null)}/>
+          </div>
+        </div>
+      )}
+
+      {/* Monthly Summary View */}
+      {showMonthlySummary && (
+        <div className={`fixed inset-0 ${THEME.bg} z-50 flex flex-col animate-in slide-in-from-right duration-300`}>
+          <div className={`flex items-center justify-between px-6 py-4 border-b-2 ${THEME.cardBorder} ${THEME.card} backdrop-blur-md`}>
+            <button 
+              onClick={() => setShowMonthlySummary(false)} 
+              className={`flex items-center ${THEME.textMuted} hover:text-teal-700 transition-colors`}
+              aria-label="Back to dashboard"
+            >
+              <div className="p-2 rounded-full bg-teal-50 mr-3">
+                <ChevronRight className="rotate-180" size={20} />
+              </div>
+              <span className="font-medium">Back to Dashboard</span>
+            </button>
+            <div className="p-2 rounded-full bg-teal-100">
+              <Calendar size={20} className="text-teal-700" />
+            </div>
+          </div>
+          <div className="flex-grow p-6 overflow-y-auto">
+            <MonthlySummaryView 
+              goals={goals} 
+              logs={logs} 
+              onClose={() => setShowMonthlySummary(false)} 
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

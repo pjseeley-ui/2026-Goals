@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   AreaChart, Area, BarChart, Bar
@@ -8,7 +8,8 @@ import {
   Target, Plus, X, BarChart2, ChevronRight, Sparkles,
   Zap, Trophy, TrendingUp, Book, DollarSign, Clock,
   Edit2, Trash2, Award, Flame, CheckSquare, TrendingDown,
-  LogOut, Mail, Lock, User
+  LogOut, Mail, Lock, User, Download, Search, Undo2,
+  Info, ChevronDown, Filter
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { 
@@ -20,7 +21,7 @@ import {
 } from 'firebase/auth';
 import { 
   getFirestore, collection, doc, onSnapshot, updateDoc, addDoc, 
-  writeBatch, query, Timestamp, increment, deleteDoc, setDoc
+  writeBatch, query, Timestamp, increment, deleteDoc, setDoc, orderBy, limit
 } from 'firebase/firestore';
 
 // Firebase configuration
@@ -55,7 +56,19 @@ const INITIAL_GOALS = [
   { name: '5K Personal Best', type: 'personal-best', target: 18, current: 25, unit: 'minutes', trackStreak: false, streak: 0, bestValue: null, bestDate: null, higherIsBetter: false },
 ];
 
-// Goal type options - EXPANDED
+// Goal Templates for Quick Setup
+const GOAL_TEMPLATES = [
+  { name: 'Run 1000km', type: 'cumulative', target: 1000, unit: 'km', trackStreak: true, icon: '🏃' },
+  { name: 'Read 24 Books', type: 'cumulative', target: 24, unit: 'books', trackStreak: false, icon: '📚' },
+  { name: 'Save £20,000', type: 'cumulative', target: 20000, unit: '£', trackStreak: false, icon: '💰' },
+  { name: 'Learn Spanish', type: 'cumulative', target: 365, unit: 'days', trackStreak: true, icon: '🗣️' },
+  { name: '5K Personal Best', type: 'personal-best', target: 20, unit: 'minutes', trackStreak: false, higherIsBetter: false, icon: '⏱️' },
+  { name: 'Lose 10kg', type: 'countdown', target: 10, unit: 'kg', trackStreak: false, icon: '⚖️' },
+  { name: 'Daily Meditation', type: 'habit', target: 365, unit: 'days', trackStreak: true, icon: '🧘' },
+  { name: 'Maintain Weight', type: 'maintain', target: 75, minValue: 73, maxValue: 77, unit: 'kg', trackStreak: false, icon: '📊' },
+];
+
+// Goal type options
 const GOAL_TYPES = [
   { value: 'cumulative', label: 'Cumulative', description: 'Add up progress over time (e.g., total distance, savings)' },
   { value: 'personal-best', label: 'Personal Best', description: 'Track your best single performance (e.g., fastest time, highest score)' },
@@ -65,6 +78,45 @@ const GOAL_TYPES = [
   { value: 'average', label: 'Average', description: 'Maintain an average per week/month' },
   { value: 'maintain', label: 'Maintain Range', description: 'Keep within min/max bounds (e.g., weight, budget)' },
 ];
+
+// Toast Notification Component
+const Toast = ({ message, type = 'success', onClose }) => {
+  useEffect(() => {
+    const timer = setTimeout(onClose, 4000);
+    return () => clearTimeout(timer);
+  }, [onClose]);
+
+  const icons = {
+    success: <CheckCircle2 size={20} />,
+    error: <AlertCircle size={20} />,
+    info: <Info size={20} />
+  };
+
+  const styles = {
+    success: 'bg-teal-50 border-teal-300 text-teal-800',
+    error: 'bg-rose-50 border-rose-300 text-rose-800',
+    info: 'bg-cyan-50 border-cyan-300 text-cyan-800'
+  };
+
+  return (
+    <div className={`fixed bottom-6 right-6 z-50 flex items-center space-x-3 ${styles[type]} border-2 rounded-xl px-4 py-3 shadow-lg animate-in slide-in-from-bottom-4 duration-300 max-w-md`}>
+      {icons[type]}
+      <p className="text-sm font-medium flex-1">{message}</p>
+      <button onClick={onClose} className="hover:opacity-70 transition-opacity">
+        <X size={18} />
+      </button>
+    </div>
+  );
+};
+
+// Toast Container
+const ToastContainer = ({ toasts, removeToast }) => (
+  <div className="fixed bottom-6 right-6 z-50 space-y-2">
+    {toasts.map(toast => (
+      <Toast key={toast.id} {...toast} onClose={() => removeToast(toast.id)} />
+    ))}
+  </div>
+);
 
 // Components
 const GlassCard = ({ children, className = "", onClick }) => (
@@ -76,14 +128,36 @@ const GlassCard = ({ children, className = "", onClick }) => (
   </div>
 );
 
-const Modal = ({ isOpen, onClose, title, children }) => {
+const Modal = ({ isOpen, onClose, title, children, size = 'default' }) => {
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [isOpen]);
+
   if (!isOpen) return null;
+
+  const sizeClasses = {
+    small: 'max-w-md',
+    default: 'max-w-2xl',
+    large: 'max-w-4xl'
+  };
+
   return (
     <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center sm:p-4 animate-in fade-in duration-300">
-      <div className={`${THEME.card} border-t sm:border-2 border-teal-300 rounded-t-2xl sm:rounded-2xl w-full max-w-2xl shadow-2xl transform transition-all scale-100 overflow-hidden`}>
+      <div className={`${THEME.card} border-t sm:border-2 border-teal-300 rounded-t-2xl sm:rounded-2xl w-full ${sizeClasses[size]} shadow-2xl transform transition-all scale-100 overflow-hidden`}>
         <div className={`flex justify-between items-center p-6 border-b-2 border-teal-100 ${THEME.bg}`}>
           <h3 className={`text-xl font-bold ${THEME.textMain} tracking-tight`}>{title}</h3>
-          <button onClick={onClose} className={`p-2 rounded-full hover:bg-teal-100 ${THEME.textMuted} hover:text-teal-700 transition-colors`}>
+          <button 
+            onClick={onClose} 
+            className={`p-2 rounded-full hover:bg-teal-100 ${THEME.textMuted} hover:text-teal-700 transition-colors`}
+            aria-label="Close modal"
+          >
             <X size={20} />
           </button>
         </div>
@@ -178,7 +252,7 @@ const AuthScreen = ({ onAuth, error: initError }) => {
             <div className="flex items-start space-x-2">
               <AlertCircle size={20} className="text-rose-600 flex-shrink-0 mt-0.5" />
               <div>
-                <p className="text-sm font-semibold text-rose-700 mb-1">Initialization Error</p>
+                <p className="text-sm font-semibold text-rose-700 mb-1">Initialisation Error</p>
                 <p className="text-sm text-rose-600">{initError}</p>
               </div>
             </div>
@@ -213,12 +287,13 @@ const AuthScreen = ({ onAuth, error: initError }) => {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">
+              <label className="block text-sm font-medium text-slate-700 mb-2" htmlFor="email">
                 Email Address
               </label>
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
                 <input
+                  id="email"
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -226,17 +301,19 @@ const AuthScreen = ({ onAuth, error: initError }) => {
                   placeholder="you@example.com"
                   required
                   autoComplete="email"
+                  aria-label="Email address"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">
+              <label className="block text-sm font-medium text-slate-700 mb-2" htmlFor="password">
                 Password
               </label>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
                 <input
+                  id="password"
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -244,18 +321,20 @@ const AuthScreen = ({ onAuth, error: initError }) => {
                   placeholder="••••••••"
                   required
                   autoComplete={isLogin ? "current-password" : "new-password"}
+                  aria-label="Password"
                 />
               </div>
             </div>
 
             {!isLogin && (
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
+                <label className="block text-sm font-medium text-slate-700 mb-2" htmlFor="confirmPassword">
                   Confirm Password
                 </label>
                 <div className="relative">
                   <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
                   <input
+                    id="confirmPassword"
                     type="password"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
@@ -263,13 +342,14 @@ const AuthScreen = ({ onAuth, error: initError }) => {
                     placeholder="••••••••"
                     required
                     autoComplete="new-password"
+                    aria-label="Confirm password"
                   />
                 </div>
               </div>
             )}
 
             {error && (
-              <div className="bg-rose-50 border-2 border-rose-200 rounded-xl p-3 flex items-start space-x-2">
+              <div className="bg-rose-50 border-2 border-rose-200 rounded-xl p-3 flex items-start space-x-2" role="alert">
                 <AlertCircle size={20} className="text-rose-600 flex-shrink-0 mt-0.5" />
                 <p className="text-sm text-rose-700">{error}</p>
               </div>
@@ -280,7 +360,7 @@ const AuthScreen = ({ onAuth, error: initError }) => {
               disabled={loading}
               className={`w-full py-3 rounded-xl font-semibold text-white transition-all ${
                 isLogin ? 'bg-teal-600 hover:bg-teal-700' : 'bg-rose-600 hover:bg-rose-700'
-              } disabled:opacity-50 disabled:cursor-not-allowed shadow-lg`}
+              } disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-xl`}
             >
               {loading ? 'Please wait...' : isLogin ? 'Sign In' : 'Create Account'}
             </button>
@@ -301,6 +381,179 @@ const AuthScreen = ({ onAuth, error: initError }) => {
         </GlassCard>
       </div>
     </div>
+  );
+};
+
+// Quick Stats Dashboard
+const QuickStats = ({ goals, logs }) => {
+  const stats = useMemo(() => {
+    const totalGoals = goals.length;
+    const completedGoals = goals.filter(g => {
+      if (g.type === 'cumulative' || g.type === 'habit' || g.type === 'target') {
+        return g.current >= g.target;
+      }
+      if (g.type === 'countdown') {
+        return g.target - g.current <= 0;
+      }
+      if (g.type === 'personal-best' && g.bestValue !== null) {
+        return g.higherIsBetter ? g.bestValue >= g.target : g.bestValue <= g.target;
+      }
+      return false;
+    }).length;
+
+    const today = new Date().toDateString();
+    const logsToday = logs.filter(l => 
+      new Date(l.timestamp.seconds * 1000).toDateString() === today
+    ).length;
+
+    const thisWeek = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const logsThisWeek = logs.filter(l => 
+      new Date(l.timestamp.seconds * 1000) >= thisWeek
+    ).length;
+
+    const averageProgress = goals.length > 0 
+      ? goals.reduce((sum, g) => {
+          if (g.type === 'cumulative' || g.type === 'habit' || g.type === 'target') {
+            return sum + Math.min(100, (g.current / g.target) * 100);
+          }
+          return sum;
+        }, 0) / goals.length
+      : 0;
+
+    return { totalGoals, completedGoals, logsToday, logsThisWeek, averageProgress };
+  }, [goals, logs]);
+
+  return (
+    <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+      <GlassCard className="p-4">
+        <div className="flex items-center space-x-2 mb-2">
+          <Target size={16} className="text-teal-600" />
+          <span className="text-xs font-medium text-slate-600">Total Goals</span>
+        </div>
+        <p className="text-2xl font-bold text-slate-900">{stats.totalGoals}</p>
+      </GlassCard>
+
+      <GlassCard className="p-4">
+        <div className="flex items-center space-x-2 mb-2">
+          <CheckCircle2 size={16} className="text-teal-600" />
+          <span className="text-xs font-medium text-slate-600">Completed</span>
+        </div>
+        <p className="text-2xl font-bold text-teal-700">{stats.completedGoals}</p>
+      </GlassCard>
+
+      <GlassCard className="p-4">
+        <div className="flex items-center space-x-2 mb-2">
+          <Activity size={16} className="text-cyan-600" />
+          <span className="text-xs font-medium text-slate-600">Logged Today</span>
+        </div>
+        <p className="text-2xl font-bold text-cyan-700">{stats.logsToday}</p>
+      </GlassCard>
+
+      <GlassCard className="p-4">
+        <div className="flex items-center space-x-2 mb-2">
+          <Calendar size={16} className="text-rose-600" />
+          <span className="text-xs font-medium text-slate-600">This Week</span>
+        </div>
+        <p className="text-2xl font-bold text-rose-700">{stats.logsThisWeek}</p>
+      </GlassCard>
+
+      <GlassCard className="p-4">
+        <div className="flex items-center space-x-2 mb-2">
+          <TrendingUp size={16} className="text-purple-600" />
+          <span className="text-xs font-medium text-slate-600">Avg Progress</span>
+        </div>
+        <p className="text-2xl font-bold text-purple-700">{stats.averageProgress.toFixed(0)}%</p>
+      </GlassCard>
+    </div>
+  );
+};
+
+// Recent Activity Feed
+const RecentActivity = ({ logs, goals }) => {
+  const recentLogs = useMemo(() => {
+    return logs
+      .sort((a, b) => b.timestamp.seconds - a.timestamp.seconds)
+      .slice(0, 5)
+      .map(log => {
+        const goal = goals.find(g => g.id === log.goalId);
+        return { ...log, goalName: goal?.name, goalUnit: goal?.unit };
+      });
+  }, [logs, goals]);
+
+  if (recentLogs.length === 0) return null;
+
+  return (
+    <GlassCard className="p-6 mb-8">
+      <h3 className="text-lg font-bold text-slate-900 mb-4 flex items-center space-x-2">
+        <Activity size={20} className="text-teal-600" />
+        <span>Recent Activity</span>
+      </h3>
+      <div className="space-y-3">
+        {recentLogs.map(log => (
+          <div key={log.id} className="flex items-center justify-between py-2 border-b border-slate-100 last:border-0">
+            <div className="flex-1">
+              <p className="text-sm font-medium text-slate-900">{log.goalName}</p>
+              <p className="text-xs text-slate-500">
+                {new Date(log.timestamp.seconds * 1000).toLocaleDateString('en-GB', { 
+                  month: 'short', 
+                  day: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit'
+                })}
+              </p>
+            </div>
+            <div className="text-right">
+              <p className="text-sm font-bold text-teal-700">+{log.value} {log.goalUnit}</p>
+              {log.notes && (
+                <p className="text-xs text-slate-500 italic">{log.notes.substring(0, 30)}{log.notes.length > 30 ? '...' : ''}</p>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </GlassCard>
+  );
+};
+
+// Goal Templates Modal
+const GoalTemplatesModal = ({ isOpen, onClose, onSelectTemplate }) => {
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Quick Start Templates" size="large">
+      <p className="text-slate-600 mb-6">Choose a pre-configured goal template to get started quickly</p>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {GOAL_TEMPLATES.map((template, index) => (
+          <button
+            key={index}
+            onClick={() => {
+              onSelectTemplate(template);
+              onClose();
+            }}
+            className="text-left p-4 border-2 border-teal-200 rounded-xl hover:bg-teal-50 hover:border-teal-400 transition-all group"
+          >
+            <div className="flex items-start space-x-3">
+              <span className="text-3xl">{template.icon}</span>
+              <div className="flex-1">
+                <h4 className="font-bold text-slate-900 mb-1 group-hover:text-teal-700">{template.name}</h4>
+                <p className="text-sm text-slate-600 capitalize">{template.type.replace('-', ' ')}</p>
+                <p className="text-xs text-slate-500 mt-1">
+                  Target: {template.target} {template.unit}
+                  {template.trackStreak && ' • Daily Streak'}
+                </p>
+              </div>
+            </div>
+          </button>
+        ))}
+      </div>
+      
+      <div className="mt-6 p-4 bg-cyan-50 border-2 border-cyan-200 rounded-xl">
+        <div className="flex items-start space-x-2">
+          <Info size={18} className="text-cyan-700 flex-shrink-0 mt-0.5" />
+          <p className="text-sm text-cyan-800">
+            Templates give you a head start. You can customise any values after creation.
+          </p>
+        </div>
+      </div>
+    </Modal>
   );
 };
 
@@ -537,9 +790,8 @@ const MonthlySummaryView = ({ goals, logs, onClose }) => {
   );
 };
 
-// Goal Card - WITH NEW GOAL TYPE LOGIC
+// Goal Card
 const GoalCard = ({ goal, onLogClick, onAnalyzeClick, onEditClick, onDeleteClick }) => {
-  // Calculate progress based on goal type
   const getProgressData = () => {
     switch (goal.type) {
       case 'cumulative':
@@ -554,7 +806,7 @@ const GoalCard = ({ goal, onLogClick, onAnalyzeClick, onEditClick, onDeleteClick
       }
       
       case 'personal-best': {
-        const higherIsBetter = goal.higherIsBetter !== false; // default to true
+        const higherIsBetter = goal.higherIsBetter !== false;
         const hasBest = goal.bestValue !== null && goal.bestValue !== undefined;
         let percent = 0;
         let isAhead = false;
@@ -564,7 +816,6 @@ const GoalCard = ({ goal, onLogClick, onAnalyzeClick, onEditClick, onDeleteClick
             percent = Math.min(100, Math.max(0, (goal.bestValue / goal.target) * 100));
             isAhead = goal.bestValue >= goal.target;
           } else {
-            // Lower is better (e.g., golf score, race time)
             const range = goal.current - goal.target;
             if (range > 0) {
               percent = Math.min(100, Math.max(0, ((goal.current - goal.bestValue) / range) * 100));
@@ -612,7 +863,6 @@ const GoalCard = ({ goal, onLogClick, onAnalyzeClick, onEditClick, onDeleteClick
 
   const { percent, isAhead, display } = getProgressData();
   
-  // Get type-specific badge
   const getTypeBadge = () => {
     switch (goal.type) {
       case 'personal-best':
@@ -664,18 +914,21 @@ const GoalCard = ({ goal, onLogClick, onAnalyzeClick, onEditClick, onDeleteClick
           <button 
             onClick={(e) => { e.stopPropagation(); onAnalyzeClick(goal); }} 
             className="p-2 rounded-xl bg-teal-50 hover:bg-teal-100 hover:text-teal-700 text-teal-600 transition-colors"
+            aria-label="Analyse goal"
           >
             <BarChart2 size={16} />
           </button>
           <button 
             onClick={(e) => { e.stopPropagation(); onEditClick(goal); }} 
             className="p-2 rounded-xl bg-cyan-50 hover:bg-cyan-100 hover:text-cyan-700 text-cyan-600 transition-colors"
+            aria-label="Edit goal"
           >
             <Edit2 size={16} />
           </button>
           <button 
             onClick={(e) => { e.stopPropagation(); onDeleteClick(goal); }} 
             className="p-2 rounded-xl bg-rose-50 hover:bg-rose-100 hover:text-rose-700 text-rose-600 transition-colors"
+            aria-label="Delete goal"
           >
             <Trash2 size={16} />
           </button>
@@ -689,6 +942,10 @@ const GoalCard = ({ goal, onLogClick, onAnalyzeClick, onEditClick, onDeleteClick
               isAhead ? 'bg-gradient-to-r from-teal-400 to-cyan-500' : 'bg-gradient-to-r from-rose-400 to-red-500'
             }`}
             style={{ width: `${percent}%` }}
+            role="progressbar"
+            aria-valuenow={percent}
+            aria-valuemin={0}
+            aria-valuemax={100}
           />
         </div>
         <button 
@@ -716,9 +973,13 @@ export default function App() {
   const [editingGoal, setEditingGoal] = useState(null);
   const [deletingGoal, setDeletingGoal] = useState(null);
   const [showMonthlySummary, setShowMonthlySummary] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(false);
   const [logValue, setLogValue] = useState('');
   const [logNote, setLogNote] = useState('');
   const [isAddingGoal, setIsAddingGoal] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [toasts, setToasts] = useState([]);
+  const [lastLogId, setLastLogId] = useState(null);
   const [goalForm, setGoalForm] = useState({
     name: '',
     type: 'cumulative',
@@ -731,6 +992,116 @@ export default function App() {
     maxValue: ''
   });
   const [db, setDb] = useState(null);
+
+  // Toast management
+  const addToast = useCallback((message, type = 'success') => {
+    const id = Date.now();
+    setToasts(prev => [...prev, { id, message, type }]);
+  }, []);
+
+  const removeToast = useCallback((id) => {
+    setToasts(prev => prev.filter(t => t.id !== id));
+  }, []);
+
+  // Export data functionality
+  const handleExportData = useCallback(() => {
+    const exportData = {
+      goals,
+      logs: logs.map(log => ({
+        ...log,
+        timestamp: new Date(log.timestamp.seconds * 1000).toISOString()
+      })),
+      exportDate: new Date().toISOString()
+    };
+
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `2026-tracker-export-${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    addToast('Data exported successfully!', 'success');
+  }, [goals, logs, addToast]);
+
+  // Undo last log
+  const handleUndoLastLog = useCallback(async () => {
+    if (!lastLogId || !user || !db) {
+      addToast('No recent log to undo', 'error');
+      return;
+    }
+
+    try {
+      const userId = user.uid;
+      const logToUndo = logs.find(l => l.id === lastLogId);
+      
+      if (!logToUndo) {
+        addToast('Could not find log to undo', 'error');
+        return;
+      }
+
+      const goal = goals.find(g => g.id === logToUndo.goalId);
+      if (!goal) {
+        addToast('Could not find associated goal', 'error');
+        return;
+      }
+
+      // Delete the log
+      await deleteDoc(doc(db, `artifacts/${appId}/users/${userId}/logs`, lastLogId));
+
+      // Revert the goal progress
+      let updateData = {};
+      
+      switch (goal.type) {
+        case 'personal-best':
+          // Find the previous best
+          const remainingLogs = logs.filter(l => l.goalId === goal.id && l.id !== lastLogId);
+          if (remainingLogs.length > 0) {
+            const higherIsBetter = goal.higherIsBetter !== false;
+            const sortedLogs = remainingLogs.sort((a, b) => 
+              higherIsBetter ? b.value - a.value : a.value - b.value
+            );
+            updateData = {
+              bestValue: sortedLogs[0].value,
+              bestDate: new Date(sortedLogs[0].timestamp.seconds * 1000).toISOString(),
+              current: sortedLogs[0].value
+            };
+          } else {
+            updateData = { bestValue: null, bestDate: null, current: 0 };
+          }
+          break;
+          
+        case 'maintain':
+          updateData = { current: increment(-logToUndo.value) };
+          break;
+          
+        default:
+          updateData = { current: increment(-logToUndo.value) };
+      }
+
+      await updateDoc(doc(db, `artifacts/${appId}/users/${userId}/goals`, goal.id), updateData);
+      
+      setLastLogId(null);
+      addToast('Last log entry undone!', 'success');
+    } catch (err) {
+      console.error('Error undoing log:', err);
+      addToast('Failed to undo log. Please try again.', 'error');
+    }
+  }, [lastLogId, user, db, logs, goals, addToast]);
+
+  // Filtered goals based on search
+  const filteredGoals = useMemo(() => {
+    if (!searchQuery.trim()) return goals;
+    const query = searchQuery.toLowerCase();
+    return goals.filter(g => 
+      g.name.toLowerCase().includes(query) || 
+      g.type.toLowerCase().includes(query) ||
+      g.unit.toLowerCase().includes(query)
+    );
+  }, [goals, searchQuery]);
 
   useEffect(() => {
     const init = async () => {
@@ -782,7 +1153,7 @@ export default function App() {
               );
               
               const unsubscribeLogs = onSnapshot(
-                query(collection(firestore, logsPath)), 
+                query(collection(firestore, logsPath), orderBy('timestamp', 'desc')), 
                 (snapshot) => {
                   setLogs(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
                 },
@@ -808,8 +1179,8 @@ export default function App() {
 
         return () => unsubscribe();
       } catch (err) {
-        console.error('Initialization error:', err);
-        setInitError('Failed to initialize the app. Please check your internet connection and refresh.');
+        console.error('Initialisation error:', err);
+        setInitError('Failed to initialise the app. Please check your internet connection and refresh.');
         setLoading(false);
       }
     };
@@ -822,20 +1193,20 @@ export default function App() {
       await firebaseSignOut(auth);
       setGoals([]);
       setLogs([]);
+      addToast('Signed out successfully', 'success');
     } catch (err) {
       console.error('Sign out error:', err);
-      alert('Failed to sign out. Please try again.');
+      addToast('Failed to sign out. Please try again.', 'error');
     }
   };
 
-  // UPDATED LOG SUBMIT - Handles all goal types including Personal Best
   const handleLogSubmit = async (e) => {
     e.preventDefault();
     if (!user || !activeGoal || !logValue) return;
     
     const val = parseFloat(logValue);
     if (isNaN(val) || val <= 0) {
-      alert('Please enter a valid positive number');
+      addToast('Please enter a valid positive number', 'error');
       return;
     }
     
@@ -843,12 +1214,14 @@ export default function App() {
     
     try {
       // Add log entry
-      await addDoc(collection(db, `artifacts/${appId}/users/${userId}/logs`), {
+      const logRef = await addDoc(collection(db, `artifacts/${appId}/users/${userId}/logs`), {
         goalId: activeGoal.id,
         value: val,
         notes: logNote,
         timestamp: Timestamp.now()
       });
+      
+      setLastLogId(logRef.id);
       
       // Handle different goal types
       let updateData = {};
@@ -866,23 +1239,40 @@ export default function App() {
               bestDate: new Date().toISOString(),
               current: val
             };
+            addToast(`🎉 New personal best! ${val} ${activeGoal.unit}`, 'success');
+          } else {
+            addToast(`Progress logged: ${val} ${activeGoal.unit}`, 'success');
           }
           break;
         }
         
         case 'countdown': {
           updateData = { current: increment(val) };
+          const remaining = activeGoal.target - (activeGoal.current + val);
+          if (remaining <= 0) {
+            addToast(`🎊 Goal complete! You did it!`, 'success');
+          } else {
+            addToast(`Progress logged: ${remaining} ${activeGoal.unit} remaining`, 'success');
+          }
           break;
         }
         
         case 'maintain': {
           updateData = { current: val };
+          const inRange = val >= (activeGoal.minValue || 0) && val <= (activeGoal.maxValue || activeGoal.target);
+          if (inRange) {
+            addToast(`✅ Within target range: ${val} ${activeGoal.unit}`, 'success');
+          } else {
+            addToast(`⚠️ Outside target range: ${val} ${activeGoal.unit}`, 'info');
+          }
           break;
         }
         
         default: {
-          // Cumulative, habit, average, target
           updateData = { current: increment(val) };
+          const newTotal = activeGoal.current + val;
+          const percentComplete = (newTotal / activeGoal.target * 100).toFixed(0);
+          addToast(`Progress logged: ${val} ${activeGoal.unit} (${percentComplete}% complete)`, 'success');
         }
       }
       
@@ -898,7 +1288,11 @@ export default function App() {
           const yesterday = new Date(Date.now() - 86400000).toDateString();
           
           if (lastLogDate === yesterday) {
-            updateData.streak = (activeGoal.streak || 0) + 1;
+            const newStreak = (activeGoal.streak || 0) + 1;
+            updateData.streak = newStreak;
+            if (newStreak % 7 === 0) {
+              addToast(`🔥 ${newStreak} day streak! Amazing consistency!`, 'success');
+            }
           } else if (lastLogDate !== today) {
             updateData.streak = 1;
           }
@@ -914,7 +1308,7 @@ export default function App() {
       setActiveGoal(null);
     } catch (err) {
       console.error('Error logging progress:', err);
-      alert('Failed to log progress. Please try again.');
+      addToast('Failed to log progress. Please try again.', 'error');
     }
   };
 
@@ -924,7 +1318,7 @@ export default function App() {
     
     const target = parseFloat(goalForm.target);
     if (isNaN(target) || target <= 0) {
-      alert('Please enter a valid positive target number');
+      addToast('Please enter a valid positive target number', 'error');
       return;
     }
     
@@ -951,8 +1345,10 @@ export default function App() {
     try {
       if (editingGoal) {
         await updateDoc(doc(db, `artifacts/${appId}/users/${userId}/goals`, editingGoal.id), goalData);
+        addToast('Goal updated successfully!', 'success');
       } else {
         await addDoc(collection(db, `artifacts/${appId}/users/${userId}/goals`), goalData);
+        addToast('New goal created!', 'success');
       }
       
       setGoalForm({ 
@@ -970,7 +1366,7 @@ export default function App() {
       setEditingGoal(null);
     } catch (err) {
       console.error('Error saving goal:', err);
-      alert('Failed to save goal. Please try again.');
+      addToast('Failed to save goal. Please try again.', 'error');
     }
   };
 
@@ -980,11 +1376,22 @@ export default function App() {
     const userId = user.uid;
     
     try {
+      // Delete goal and its logs
       await deleteDoc(doc(db, `artifacts/${appId}/users/${userId}/goals`, deletingGoal.id));
+      
+      // Optionally delete associated logs
+      const goalLogs = logs.filter(l => l.goalId === deletingGoal.id);
+      const batch = writeBatch(db);
+      goalLogs.forEach(log => {
+        batch.delete(doc(db, `artifacts/${appId}/users/${userId}/logs`, log.id));
+      });
+      await batch.commit();
+      
       setDeletingGoal(null);
+      addToast(`Goal "${deletingGoal.name}" deleted`, 'success');
     } catch (err) {
       console.error('Error deleting goal:', err);
-      alert('Failed to delete goal. Please try again.');
+      addToast('Failed to delete goal. Please try again.', 'error');
     }
   };
 
@@ -1001,6 +1408,21 @@ export default function App() {
       maxValue: goal.maxValue?.toString() || ''
     });
     setEditingGoal(goal);
+  };
+
+  const handleSelectTemplate = (template) => {
+    setGoalForm({
+      name: template.name,
+      type: template.type,
+      target: template.target.toString(),
+      unit: template.unit,
+      trackStreak: template.trackStreak || false,
+      dueDate: '',
+      higherIsBetter: template.higherIsBetter !== false,
+      minValue: template.minValue?.toString() || '',
+      maxValue: template.maxValue?.toString() || ''
+    });
+    setIsAddingGoal(true);
   };
 
   if (!user && !loading) {
@@ -1020,6 +1442,8 @@ export default function App() {
 
   return (
     <div className={`min-h-screen ${THEME.bg} ${THEME.textMain} font-sans pb-20`}>
+      <ToastContainer toasts={toasts} removeToast={removeToast} />
+      
       <header className={`sticky top-0 z-30 ${THEME.card} backdrop-blur-xl border-b-2 ${THEME.cardBorder} shadow-sm`}>
         <div className="max-w-6xl mx-auto px-6 h-20 flex items-center justify-between">
           <div className="flex items-center space-x-3">
@@ -1032,17 +1456,45 @@ export default function App() {
             </div>
           </div>
           <div className="flex space-x-2">
+            {lastLogId && (
+              <button 
+                onClick={handleUndoLastLog} 
+                className="p-3 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded-xl transition-colors hover:shadow-lg"
+                title="Undo Last Log"
+                aria-label="Undo last log entry"
+              >
+                <Undo2 size={20} />
+              </button>
+            )}
+            <button 
+              onClick={handleExportData} 
+              className="p-3 bg-purple-100 hover:bg-purple-200 text-purple-700 rounded-xl transition-colors hover:shadow-lg"
+              title="Export Data"
+              aria-label="Export data"
+            >
+              <Download size={20} />
+            </button>
             <button 
               onClick={() => setShowMonthlySummary(true)} 
               className={`p-3 ${THEME.secondary} text-white rounded-xl transition-colors hover:shadow-lg`}
               title="Monthly Summary"
+              aria-label="View monthly summary"
             >
               <Calendar size={20} />
+            </button>
+            <button 
+              onClick={() => setShowTemplates(true)} 
+              className="p-3 bg-cyan-600 hover:bg-cyan-700 text-white rounded-xl transition-colors hover:shadow-lg"
+              title="Goal Templates"
+              aria-label="Choose goal template"
+            >
+              <Sparkles size={20} />
             </button>
             <button 
               onClick={() => setIsAddingGoal(true)} 
               className={`p-3 ${THEME.primary} text-white rounded-xl transition-colors hover:shadow-lg`}
               title="Add Goal"
+              aria-label="Add new goal"
             >
               <Plus size={20} />
             </button>
@@ -1050,6 +1502,7 @@ export default function App() {
               onClick={handleSignOut} 
               className="p-3 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl transition-colors"
               title="Sign Out"
+              aria-label="Sign out"
             >
               <LogOut size={20} />
             </button>
@@ -1058,8 +1511,27 @@ export default function App() {
       </header>
 
       <main className="max-w-6xl mx-auto px-6 py-10">
+        <QuickStats goals={goals} logs={logs} />
+        <RecentActivity logs={logs} goals={goals} />
+        
+        {goals.length > 3 && (
+          <div className="mb-6">
+            <div className="relative">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+              <input
+                type="text"
+                placeholder="Search goals by name, type or unit..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className={`w-full pl-12 pr-4 py-3 ${THEME.card} border-2 ${THEME.cardBorder} rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition-all`}
+                aria-label="Search goals"
+              />
+            </div>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {goals.map(goal => (
+          {filteredGoals.map(goal => (
             <GoalCard 
               key={goal.id} 
               goal={goal} 
@@ -1071,8 +1543,9 @@ export default function App() {
           ))}
           
           <button 
-            onClick={() => setIsAddingGoal(true)} 
+            onClick={() => setShowTemplates(true)} 
             className={`group flex flex-col items-center justify-center min-h-[240px] border-2 border-dashed ${THEME.cardBorder} rounded-2xl hover:bg-teal-50 hover:border-teal-400 transition-all duration-300`}
+            aria-label="Create new goal"
           >
             <div className="w-14 h-14 bg-teal-100 rounded-full flex items-center justify-center text-teal-600 group-hover:text-teal-700 group-hover:scale-110 transition-all">
               <Plus size={24} />
@@ -1082,7 +1555,27 @@ export default function App() {
             </span>
           </button>
         </div>
+
+        {searchQuery && filteredGoals.length === 0 && (
+          <div className="text-center py-12">
+            <Search size={48} className="mx-auto text-slate-300 mb-4" />
+            <p className="text-slate-600">No goals found matching "{searchQuery}"</p>
+            <button 
+              onClick={() => setSearchQuery('')}
+              className="mt-4 text-teal-600 hover:text-teal-700 font-medium"
+            >
+              Clear search
+            </button>
+          </div>
+        )}
       </main>
+
+      {/* Goal Templates Modal */}
+      <GoalTemplatesModal 
+        isOpen={showTemplates}
+        onClose={() => setShowTemplates(false)}
+        onSelectTemplate={handleSelectTemplate}
+      />
 
       {/* Log Progress Modal */}
       <Modal 
@@ -1092,11 +1585,12 @@ export default function App() {
       >
         <form onSubmit={handleLogSubmit}>
           <div className="mb-6">
-            <label className={`block text-xs font-bold ${THEME.textMuted} uppercase mb-2`}>
+            <label className={`block text-xs font-bold ${THEME.textMuted} uppercase mb-2`} htmlFor="logValue">
               Value
             </label>
             <div className="relative">
               <input 
+                id="logValue"
                 type="number" 
                 step="any" 
                 autoFocus 
@@ -1105,6 +1599,7 @@ export default function App() {
                 value={logValue} 
                 onChange={(e) => setLogValue(e.target.value)} 
                 required
+                aria-label="Progress value"
               />
               <span className={`absolute right-4 top-1/2 -translate-y-1/2 ${THEME.textMuted} font-medium`}>
                 {activeGoal?.unit}
@@ -1120,29 +1615,31 @@ export default function App() {
           </div>
           
           <div className="mb-6">
-            <label className={`block text-xs font-bold ${THEME.textMuted} uppercase mb-2`}>
+            <label className={`block text-xs font-bold ${THEME.textMuted} uppercase mb-2`} htmlFor="logNote">
               Note (optional)
             </label>
             <textarea 
+              id="logNote"
               rows="2" 
               placeholder="Quick note..." 
               className={`w-full ${THEME.card} border-2 ${THEME.cardBorder} rounded-xl p-4 text-sm ${THEME.textMain} focus:ring-2 focus:ring-teal-500 outline-none transition-all resize-none`}
               value={logNote} 
-              onChange={(e) => setLogNote(e.target.value)} 
+              onChange={(e) => setLogNote(e.target.value)}
+              aria-label="Optional note"
             />
           </div>
           
           <button 
             type="submit" 
             disabled={!logValue} 
-            className={`w-full ${THEME.primary} text-white font-bold py-4 rounded-xl transition-colors shadow-lg disabled:opacity-50 disabled:cursor-not-allowed`}
+            className={`w-full ${THEME.primary} text-white font-bold py-4 rounded-xl transition-colors shadow-lg disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-xl`}
           >
             Update Progress
           </button>
         </form>
       </Modal>
 
-      {/* Add/Edit Goal Modal - UPDATED WITH NEW FIELDS */}
+      {/* Add/Edit Goal Modal */}
       <Modal 
         isOpen={isAddingGoal || !!editingGoal} 
         onClose={() => { 
@@ -1161,29 +1658,34 @@ export default function App() {
           }); 
         }} 
         title={editingGoal ? "Edit Goal" : "New Goal"}
+        size="default"
       >
         <form onSubmit={handleAddOrEditGoal} className="space-y-5">
           <div>
-            <label className={`block text-xs font-bold ${THEME.textMuted} uppercase mb-2`}>
+            <label className={`block text-xs font-bold ${THEME.textMuted} uppercase mb-2`} htmlFor="goalName">
               Goal Name
             </label>
             <input 
+              id="goalName"
               className={`w-full ${THEME.card} border-2 ${THEME.cardBorder} rounded-xl p-4 ${THEME.textMain} focus:ring-2 focus:ring-teal-500 outline-none`}
               placeholder="Run 1000km" 
               value={goalForm.name} 
               onChange={e => setGoalForm({...goalForm, name: e.target.value})} 
               required 
+              aria-label="Goal name"
             />
           </div>
           
           <div>
-            <label className={`block text-xs font-bold ${THEME.textMuted} uppercase mb-2`}>
+            <label className={`block text-xs font-bold ${THEME.textMuted} uppercase mb-2`} htmlFor="goalType">
               Goal Type
             </label>
             <select
+              id="goalType"
               className={`w-full ${THEME.card} border-2 ${THEME.cardBorder} rounded-xl p-4 ${THEME.textMain} focus:ring-2 focus:ring-teal-500 outline-none`}
               value={goalForm.type}
               onChange={e => setGoalForm({...goalForm, type: e.target.value})}
+              aria-label="Goal type"
             >
               {GOAL_TYPES.map(type => (
                 <option key={type.value} value={type.value}>
@@ -1195,43 +1697,49 @@ export default function App() {
           
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className={`block text-xs font-bold ${THEME.textMuted} uppercase mb-2`}>
+              <label className={`block text-xs font-bold ${THEME.textMuted} uppercase mb-2`} htmlFor="goalTarget">
                 Target
               </label>
               <input 
+                id="goalTarget"
                 type="number" 
                 step="any"
                 className={`w-full ${THEME.card} border-2 ${THEME.cardBorder} rounded-xl p-4 ${THEME.textMain} focus:ring-2 focus:ring-teal-500 outline-none`}
                 placeholder="1000" 
                 value={goalForm.target} 
                 onChange={e => setGoalForm({...goalForm, target: e.target.value})} 
-                required 
+                required
+                aria-label="Target value"
               />
             </div>
             
             <div>
-              <label className={`block text-xs font-bold ${THEME.textMuted} uppercase mb-2`}>
+              <label className={`block text-xs font-bold ${THEME.textMuted} uppercase mb-2`} htmlFor="goalUnit">
                 Unit
               </label>
               <input 
+                id="goalUnit"
                 className={`w-full ${THEME.card} border-2 ${THEME.cardBorder} rounded-xl p-4 ${THEME.textMain} focus:ring-2 focus:ring-teal-500 outline-none`}
                 placeholder="km" 
                 value={goalForm.unit} 
-                onChange={e => setGoalForm({...goalForm, unit: e.target.value})} 
+                onChange={e => setGoalForm({...goalForm, unit: e.target.value})}
+                aria-label="Unit of measurement"
               />
             </div>
           </div>
           
           {goalForm.type === 'target' && (
             <div>
-              <label className={`block text-xs font-bold ${THEME.textMuted} uppercase mb-2`}>
+              <label className={`block text-xs font-bold ${THEME.textMuted} uppercase mb-2`} htmlFor="dueDate">
                 Due Date
               </label>
               <input 
+                id="dueDate"
                 type="date"
                 className={`w-full ${THEME.card} border-2 ${THEME.cardBorder} rounded-xl p-4 ${THEME.textMain} focus:ring-2 focus:ring-teal-500 outline-none`}
                 value={goalForm.dueDate} 
-                onChange={e => setGoalForm({...goalForm, dueDate: e.target.value})} 
+                onChange={e => setGoalForm({...goalForm, dueDate: e.target.value})}
+                aria-label="Due date"
               />
             </div>
           )}
@@ -1254,29 +1762,33 @@ export default function App() {
           {goalForm.type === 'maintain' && (
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className={`block text-xs font-bold ${THEME.textMuted} uppercase mb-2`}>
+                <label className={`block text-xs font-bold ${THEME.textMuted} uppercase mb-2`} htmlFor="minValue">
                   Min Value
                 </label>
                 <input 
+                  id="minValue"
                   type="number" 
                   step="any"
                   className={`w-full ${THEME.card} border-2 ${THEME.cardBorder} rounded-xl p-4 ${THEME.textMain} focus:ring-2 focus:ring-teal-500 outline-none`}
                   placeholder="70" 
                   value={goalForm.minValue} 
-                  onChange={e => setGoalForm({...goalForm, minValue: e.target.value})} 
+                  onChange={e => setGoalForm({...goalForm, minValue: e.target.value})}
+                  aria-label="Minimum value"
                 />
               </div>
               <div>
-                <label className={`block text-xs font-bold ${THEME.textMuted} uppercase mb-2`}>
+                <label className={`block text-xs font-bold ${THEME.textMuted} uppercase mb-2`} htmlFor="maxValue">
                   Max Value
                 </label>
                 <input 
+                  id="maxValue"
                   type="number" 
                   step="any"
                   className={`w-full ${THEME.card} border-2 ${THEME.cardBorder} rounded-xl p-4 ${THEME.textMain} focus:ring-2 focus:ring-teal-500 outline-none`}
                   placeholder="75" 
                   value={goalForm.maxValue} 
-                  onChange={e => setGoalForm({...goalForm, maxValue: e.target.value})} 
+                  onChange={e => setGoalForm({...goalForm, maxValue: e.target.value})}
+                  aria-label="Maximum value"
                 />
               </div>
             </div>
@@ -1297,7 +1809,7 @@ export default function App() {
           
           <button 
             type="submit" 
-            className={`w-full ${THEME.primary} text-white font-bold py-4 rounded-xl mt-2 transition-colors shadow-lg`}
+            className={`w-full ${THEME.primary} text-white font-bold py-4 rounded-xl mt-2 transition-colors shadow-lg hover:shadow-xl`}
           >
             {editingGoal ? 'Save Changes' : 'Create Goal'}
           </button>
@@ -1309,6 +1821,7 @@ export default function App() {
         isOpen={!!deletingGoal}
         onClose={() => setDeletingGoal(null)}
         title="Delete Goal?"
+        size="small"
       >
         <div className="text-center">
           <div className="w-16 h-16 bg-rose-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -1344,6 +1857,7 @@ export default function App() {
             <button 
               onClick={() => setAnalyzingGoal(null)} 
               className={`flex items-center ${THEME.textMuted} hover:text-teal-700 transition-colors`}
+              aria-label="Back to dashboard"
             >
               <div className="p-2 rounded-full bg-teal-50 mr-3">
                 <ChevronRight className="rotate-180" size={20} />
@@ -1373,13 +1887,14 @@ export default function App() {
             <button 
               onClick={() => setShowMonthlySummary(false)} 
               className={`flex items-center ${THEME.textMuted} hover:text-teal-700 transition-colors`}
+              aria-label="Back to dashboard"
             >
               <div className="p-2 rounded-full bg-teal-50 mr-3">
                 <ChevronRight className="rotate-180" size={20} />
               </div>
               <span className="font-medium">Back to Dashboard</span>
             </button>
-<div className="p-2 rounded-full bg-teal-100">
+            <div className="p-2 rounded-full bg-teal-100">
               <Calendar size={20} className="text-teal-700" />
             </div>
           </div>

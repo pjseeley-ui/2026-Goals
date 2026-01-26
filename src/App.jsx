@@ -1543,21 +1543,37 @@ const GoalCard = ({ goal, onLogClick, onAnalyzeClick, onEditClick, onDeleteClick
       case 'personal-best': {
         const higherIsBetter = goal.higherIsBetter !== false;
         const hasBest = goal.bestValue !== null && goal.bestValue !== undefined;
+        const startingPoint = goal.current; // This is the starting baseline
+        const target = goal.target;
         let percent = 0;
         let isAhead = false;
         
         if (hasBest) {
+          const bestValue = goal.bestValue;
+          
           if (higherIsBetter) {
-            percent = Math.min(100, Math.max(0, (goal.bestValue / goal.target) * 100));
-            isAhead = goal.bestValue >= goal.target;
+            // Higher is better (e.g., max bench press, high jump)
+            // Progress from starting point to target
+            const totalRange = target - startingPoint;
+            const currentProgress = bestValue - startingPoint;
+            percent = totalRange > 0 ? Math.min(100, Math.max(0, (currentProgress / totalRange) * 100)) : 0;
+            isAhead = bestValue >= target;
           } else {
-            const range = goal.current - goal.target;
-            if (range > 0) {
-              percent = Math.min(100, Math.max(0, ((goal.current - goal.bestValue) / range) * 100));
-            }
-            isAhead = goal.bestValue <= goal.target;
+            // Lower is better (e.g., race time, golf score)
+            // Progress from starting point DOWN to target
+            const totalRange = startingPoint - target;
+            const currentProgress = startingPoint - bestValue;
+            percent = totalRange > 0 ? Math.min(100, Math.max(0, (currentProgress / totalRange) * 100)) : 0;
+            isAhead = bestValue <= target;
           }
         }
+        
+        const bestDisplay = hasBest 
+          ? `Best: ${goal.bestValue} ${goal.unit} (from ${startingPoint} ${goal.unit})` 
+          : `Start: ${startingPoint} ${goal.unit} → Target: ${goal.target} ${goal.unit}`;
+        
+        return { percent, isAhead, display: bestDisplay };
+      }
         
         const bestDisplay = hasBest 
           ? `Best: ${goal.bestValue} ${goal.unit}` 

@@ -1574,14 +1574,7 @@ const GoalCard = ({ goal, onLogClick, onAnalyzeClick, onEditClick, onDeleteClick
         
         return { percent, isAhead, display: bestDisplay };
       }
-        
-        const bestDisplay = hasBest 
-          ? `Best: ${goal.bestValue} ${goal.unit}` 
-          : `No PB yet (Target: ${goal.target} ${goal.unit})`;
-        
-        return { percent, isAhead, display: bestDisplay };
-      }
-      
+     
       case 'countdown': {
         const remaining = goal.target - goal.current;
         const percent = Math.min(100, Math.max(0, (goal.current / goal.target) * 100));

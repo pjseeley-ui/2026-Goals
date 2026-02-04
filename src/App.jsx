@@ -2322,14 +2322,6 @@ export default function App() {
               <Calendar size={20} />
             </button>
             <button 
-              onClick={() => setShowTemplates(true)} 
-              className="p-3 bg-rose-100 hover:bg-rose-200 text-rose-700 rounded-xl transition-colors hover:shadow-lg"
-              title="Goal Templates"
-              aria-label="Choose goal template"
-            >
-              <Sparkles size={20} />
-            </button>
-            <button 
               onClick={() => setIsAddingGoal(true)} 
               className={`p-3 ${THEME.primary} text-white rounded-xl transition-colors hover:shadow-lg`}
               title="Add Goal"
@@ -2380,12 +2372,11 @@ export default function App() {
               onDeleteClick={setDeletingGoal}
             />
           ))}
-          
-          <button 
-            onClick={() => setShowTemplates(true)} 
-            className={`group flex flex-col items-center justify-center min-h-[240px] border-2 border-dashed ${THEME.cardBorder} rounded-2xl hover:bg-teal-50 hover:border-teal-400 transition-all duration-300`}
-            aria-label="Create new goal"
-          >
+<button 
+  onClick={() => setIsAddingGoal(true)} 
+  className={`group flex flex-col items-center justify-center min-h-[240px] border-2 border-dashed ${THEME.cardBorder} rounded-2xl hover:bg-teal-50 hover:border-teal-400 transition-all duration-300`}<button 
+  onClick={() => setIsAddingGoal(true)} 
+  className={`group flex flex-col items-center justify-center min-h-[240px] border-2 border-dashed ${THEME.cardBorder} rounded-2xl hover:bg-teal-50 hover:border-teal-400 transition-all duration-300`}
             <div className="w-14 h-14 bg-teal-100 rounded-full flex items-center justify-center text-teal-600 group-hover:text-teal-700 group-hover:scale-110 transition-all">
               <Plus size={24} />
             </div>

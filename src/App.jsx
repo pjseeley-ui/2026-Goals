@@ -1753,6 +1753,7 @@ export default function App() {
     higherIsBetter: true,
     minValue: '',
     maxValue: '',
+    current: '',  
     privacy: 'friends' // NEW: default privacy setting
   });
   const [db, setDb] = useState(null);
@@ -2128,6 +2129,7 @@ export default function App() {
       ...(goalForm.type === 'target' && goalForm.dueDate ? { dueDate: goalForm.dueDate } : {}),
       ...(goalForm.type === 'personal-best' ? { 
         higherIsBetter: goalForm.higherIsBetter,
+        current: parseFloat(goalForm.current) || 0, 
         bestValue: editingGoal ? editingGoal.bestValue : null,
         bestDate: editingGoal ? editingGoal.bestDate : null
       } : {}),
@@ -2157,6 +2159,7 @@ export default function App() {
         higherIsBetter: true,
         minValue: '',
         maxValue: '',
+        current: '',
         privacy: 'friends'
       });
       setIsAddingGoal(false);
@@ -2201,6 +2204,7 @@ export default function App() {
       higherIsBetter: goal.higherIsBetter !== false,
       minValue: goal.minValue?.toString() || '',
       maxValue: goal.maxValue?.toString() || '',
+      current: goal.current?.toString() || '', 
       privacy: goal.privacy || 'private' // NEW
     });
     setEditingGoal(goal);
@@ -2217,6 +2221,7 @@ export default function App() {
       higherIsBetter: template.higherIsBetter !== false,
       minValue: template.minValue?.toString() || '',
       maxValue: template.maxValue?.toString() || '',
+      current: template.current?.toString() || '',
       privacy: template.privacy || 'friends' // NEW
     });
     setIsAddingGoal(true);
@@ -2516,6 +2521,7 @@ export default function App() {
             higherIsBetter: true,
             minValue: '',
             maxValue: '',
+            current: '', 
             privacy: 'friends'
           }); 
         }} 

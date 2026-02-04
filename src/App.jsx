@@ -2034,7 +2034,6 @@ export default function App() {
             updateData = {
               bestValue: val,
               bestDate: new Date().toISOString(),
-              current: val
             };
             addToast(`🎉 New personal best! ${val} ${activeGoal.unit}`, 'success');
           } else {

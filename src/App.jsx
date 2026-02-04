@@ -2640,21 +2640,41 @@ export default function App() {
             </div>
           )}
           
-          {goalForm.type === 'personal-best' && (
-            <div className="flex items-center space-x-3">
-              <input 
-                type="checkbox"
-                id="higherIsBetter"
-                className="w-5 h-5 text-teal-600 border-2 border-teal-300 rounded focus:ring-teal-500"
-                checked={goalForm.higherIsBetter}
-                onChange={e => setGoalForm({...goalForm, higherIsBetter: e.target.checked})}
-              />
-              <label htmlFor="higherIsBetter" className={`text-sm font-medium ${THEME.textMain} cursor-pointer`}>
-                Higher is better (uncheck for golf/time goals where lower is better)
-              </label>
-            </div>
+         {goalForm.type === 'personal-best' && (
+            <>
+              <div>
+                <label className={`block text-xs font-bold ${THEME.textMuted} uppercase mb-2`} htmlFor="startingValue">
+                  Starting Value (Your Current Time/Score)
+                </label>
+                <input 
+                  id="startingValue"
+                  type="number" 
+                  step="any"
+                  className={`w-full ${THEME.card} border-2 ${THEME.cardBorder} rounded-xl p-4 ${THEME.textMain} focus:ring-2 focus:ring-teal-500 outline-none`}
+                  placeholder="25" 
+                  value={goalForm.current || ''} 
+                  onChange={e => setGoalForm({...goalForm, current: e.target.value})}
+                  aria-label="Starting value"
+                  required
+                />
+                <p className="text-xs text-slate-500 mt-2">Where you're starting from (e.g., your current 5K time is 25 minutes)</p>
+              </div>
+              
+              <div className="flex items-center space-x-3">
+                <input 
+                  type="checkbox"
+                  id="higherIsBetter"
+                  className="w-5 h-5 text-teal-600 border-2 border-teal-300 rounded focus:ring-teal-500"
+                  checked={goalForm.higherIsBetter}
+                  onChange={e => setGoalForm({...goalForm, higherIsBetter: e.target.checked})}
+                />
+                <label htmlFor="higherIsBetter" className={`text-sm font-medium ${THEME.textMain} cursor-pointer`}>
+                  Higher is better (uncheck for golf/time goals where lower is better)
+                </label>
+              </div>
+            </>
           )}
-          
+  
           {goalForm.type === 'maintain' && (
             <div className="grid grid-cols-2 gap-4">
               <div>
